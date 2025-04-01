@@ -1,139 +1,37 @@
 <!DOCTYPE html>
 <html lang="pt">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Last Stand: Apocalypse</title>
-    <style>
-        body { margin: 0; overflow: hidden; }
-        canvas { display: block; }
-    </style>
-</head>
-<body>
-    <script type="module">
-        import * as THREE from 'https://cdn.jsdelivr.net/npm/three@latest/build/three.module.js';
-
-        // Configuração da cena
-        const scene = new THREE.Scene();
-        scene.background = new THREE.Color(0x3a1c1c); // Céu com tom apocalíptico vermelho escuro
-
-        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-        const renderer = new THREE.WebGLRenderer();
-        renderer.setSize(window.innerWidth, window.innerHeight);
-        document.body.appendChild(renderer.domElement);
-
-        // Criar chão
-        const floorGeometry = new THREE.PlaneGeometry(100, 100);
-        const floorMaterial = new THREE.MeshBasicMaterial({ color: 0x4a2f2f, side: THREE.DoubleSide }); // Chão com tom marrom avermelhado
-        const floor = new THREE.Mesh(floorGeometry, floorMaterial);
-        floor.rotation.x = -Math.PI / 2;
-        scene.add(floor);
-
-        // Criar jogador
-        const playerGeometry = new THREE.BoxGeometry(1, 2, 1);
-        const playerMaterial = new THREE.MeshBasicMaterial({ color: 0x00ff00 });
-        const player = new THREE.Mesh(playerGeometry, playerMaterial);
-        player.position.y = 1;
-        scene.add(player);
-
-        // Criar objeto auxiliar para controle da câmera
-        const pitchObject = new THREE.Object3D();
-        const yawObject = new THREE.Object3D();
-        yawObject.add(pitchObject);
-        pitchObject.add(camera);
-        player.add(yawObject);
-
-        camera.position.y = 0.8; // Ajuste para manter a visão dentro do corpo do jogador
-
-        // Variáveis de controle de movimento e salto
-        const keys = {};
-        let isCrouching = false;
-        let velocityY = 0; // Velocidade de movimento no eixo Y
-        let isJumping = false;
-        const gravity = -0.1; // Gravidade
-        const jumpStrength = 2; // Força do salto
-        const playerHeight = 1.8; // Altura normal do jogador
-        const crouchHeight = 0.5; // Altura ao agachar
-        const groundLevel = 1; // Nível do solo
-
-        document.addEventListener('keydown', (event) => { keys[event.code] = true; });
-        document.addEventListener('keyup', (event) => { keys[event.code] = false; });
-
-        function updatePlayer() {
-            const speed = 0.2;
-
-            // Movimentação
-            if (keys['KeyW']) {
-                player.position.z -= speed * Math.cos(yawObject.rotation.y);
-                player.position.x -= speed * Math.sin(yawObject.rotation.y);
-            }
-            if (keys['KeyS']) {
-                player.position.z += speed * Math.cos(yawObject.rotation.y);
-                player.position.x += speed * Math.sin(yawObject.rotation.y);
-            }
-            if (keys['KeyA']) {
-                player.position.z += speed * Math.sin(yawObject.rotation.y);
-                player.position.x -= speed * Math.cos(yawObject.rotation.y);
-            }
-            if (keys['KeyD']) {
-                player.position.z -= speed * Math.sin(yawObject.rotation.y);
-                player.position.x += speed * Math.cos(yawObject.rotation.y);
-            }
-
-            // Saltar
-            if (keys['Space'] && !isJumping) {
-                isJumping = true;
-                velocityY = jumpStrength; // Aplica a força de salto
-            }
-
-            // Atualizando a posição Y com gravidade
-            if (player.position.y > groundLevel) {
-                velocityY += gravity; // Aplica gravidade
-            } else {
-                // Se o jogador estiver no chão
-                player.position.y = groundLevel; // Impede que ultrapasse o nível do solo
-                velocityY = 0; // Reseta a velocidade vertical
-                isJumping = false; // Permite outro salto
-            }
-
-            player.position.y += velocityY;
-
-            // Agachar
-            if (keys['ShiftLeft']) {
-                isCrouching = true;
-                player.position.y = crouchHeight; // Altura ao agachar
-            } else {
-                isCrouching = false;
-                player.position.y = playerHeight; // Altura normal
-            }
-        }
-
-        // Controle da câmera com o mouse
-        let isLocked = false;
-        document.body.addEventListener('click', () => {
-            document.body.requestPointerLock();
-        });
-
-        document.addEventListener('pointerlockchange', () => {
-            isLocked = document.pointerLockElement === document.body;
-        });
-
-        document.addEventListener('mousemove', (event) => {
-            if (isLocked) {
-                const sensitivity = 0.002;
-                yawObject.rotation.y -= event.movementX * sensitivity;
-                pitchObject.rotation.x -= event.movementY * sensitivity;
-                pitchObject.rotation.x = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, pitchObject.rotation.x));
-            }
-        });
-
-        // Loop de animação
-        function animate() {
-            requestAnimationFrame(animate);
-            updatePlayer();
-            renderer.render(scene, camera);
-        }
-        animate();
-    </script>
-</body>
+	<head>
+		<meta charset="utf-8">
+		<title>Last Stand: Apocalypse</title>
+		<link rel="stylesheet" href="styles.css">
+	</head>
+	<body>
+		<div id="backgroundScene"></div>
+		<div id="gameScene"></div>
+		<div id="menu" class="menu">
+			<h1>Last Stand: Apocalypse</h1>
+			<button id="playButton">Play Game</button>
+			<button id="controlsButton">Controls</button>
+		</div>
+		<div id="characterMenu" class="menu" style="display: none;">
+			<h2>Choose Character Color</h2>
+			<div class="color-options">
+				<button class="color-btn" data-color="0x00ff00">Green</button>
+				<button class="color-btn" data-color="0xff0000">Red</button>
+				<button class="color-btn" data-color="0x0000ff">Blue</button>
+				<button class="color-btn" data-color="0xffff00">Yellow</button>
+			</div>
+			<button id="startGame">Start Game</button>
+		</div>
+		<div id="controlsMenu" class="menu" style="display: none;">
+			<h2>Controls</h2>
+			<ul>
+				<li>WASD - Move</li>
+				<li>Mouse - Look around</li>
+				<li>ESC - Exit pointer lock</li>
+			</ul>
+			<button id="backButton">Back</button>
+		</div>
+		<script type="module" src="./main.js"></script>
+	</body>
 </html>

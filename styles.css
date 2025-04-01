@@ -1,0 +1,91 @@
+html, body {
+    margin: 0;
+    padding: 0;
+    width: 100%;
+    height: 100vh;
+    overflow: hidden;
+    background-color: #3a1c1c;
+}
+
+body:-webkit-full-screen {
+    width: 100vw;
+    height: 100vh;
+}
+
+body:fullscreen {
+    width: 100vw;
+    height: 100vh;
+}
+
+#backgroundScene, #gameScene {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+}
+
+#backgroundScene {
+    z-index: 0;
+}
+
+#gameScene {
+    z-index: 1;
+    display: none;
+}
+
+canvas {
+    display: block;
+    width: 100vw;
+    height: 100vh;
+}
+
+.menu {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background-color: rgba(0, 0, 0, 0.8);
+    padding: 30px;
+    border-radius: 10px;
+    color: white;
+    text-align: center;
+    z-index: 2;
+    width: 300px;
+}
+
+.menu button {
+    display: block;
+    width: 200px;
+    margin: 10px auto;
+    padding: 10px;
+    background-color: #4a2f2f;
+    color: white;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+}
+
+.menu button:hover {
+    background-color: #6a4f4f;
+}
+
+.color-options {
+    display: flex;
+    justify-content: center;
+    gap: 10px;
+    margin: 20px 0;
+}
+
+.color-btn {
+    width: 50px !important;
+    height: 50px;
+    border-radius: 50% !important;
+    cursor: pointer;
+    border: 3px solid transparent;
+}
+
+.color-btn[data-color="0x00ff00"] { background-color: #00ff00; }
+.color-btn[data-color="0xff0000"] { background-color: #ff0000; }
+.color-btn[data-color="0x0000ff"] { background-color: #0000ff; }
+.color-btn[data-color="0xffff00"] { background-color: #ffff00; }
