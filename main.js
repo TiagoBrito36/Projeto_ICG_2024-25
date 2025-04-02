@@ -1,5 +1,4 @@
 import * as THREE from 'three';
-import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader';
 
 // Scene setup
 const scene = new THREE.Scene();
@@ -25,6 +24,13 @@ document.getElementById('backgroundScene').appendChild(menuRenderer.domElement);
 
 // Add this after your scene setup but before event listeners
 let gameStarted = false;
+
+// Add to global variables
+let health = 100;
+let shield = 0;
+let showFPS = false;
+let lastTime = performance.now();
+let frameCount = 0;
 
 // Initialize menu scene first
 createMenuScene();
@@ -66,20 +72,14 @@ function onWindowResize() {
 }
 
 // Replace the existing fullscreen handler
-document.addEventListener('keydown', async (event) => {
+document.addEventListener('keydown', (event) => {
     if (event.code === 'F11') {
         event.preventDefault();
-        try {
-            if (!document.fullscreenElement) {
-                await document.documentElement.requestFullscreen();
-            } else {
-                await document.exitFullscreen();
-            }
-        } catch (err) {
-            console.error('Fullscreen error:', err);
+        if (!document.fullscreenElement) {
+            document.documentElement.requestFullscreen();
+        } else {
+            document.exitFullscreen();
         }
-        // Wait for fullscreen change to complete
-        setTimeout(onWindowResize, 100);
     }
 });
 
@@ -102,6 +102,7 @@ const GRAVITY = 0.006;
 const NORMAL_HEIGHT = 2;
 const CROUCH_HEIGHT = 1;
 let mountains = [];
+let isPaused = false;
 
 // Add color selection functionality
 document.querySelectorAll('.color-btn').forEach(button => {
@@ -112,6 +113,22 @@ document.querySelectorAll('.color-btn').forEach(button => {
         });
         button.style.border = '3px solid white';
     });
+});
+
+// Add after your color selection functionality
+document.getElementById('startGame').addEventListener('click', () => {
+    if (!playerColor) {
+        console.warn('Please select a color first');
+        return;
+    }
+    // Start the game
+    gameStarted = true;
+    document.getElementById('characterMenu').style.display = 'none';
+    document.getElementById('backgroundScene').style.display = 'none';
+    document.getElementById('gameScene').style.display = 'block';
+    startGame();
+    // Request pointer lock
+    document.body.requestPointerLock();
 });
 
 // Create floor and mountains for menu background
@@ -175,6 +192,15 @@ function createMountainsForMenu() {
     });
 }
 
+// Add this function to update the HUD
+function updateHUD() {
+    document.getElementById('healthBar').style.width = `${health}%`;
+    document.getElementById('healthText').textContent = Math.ceil(health);
+    document.getElementById('shieldBar').style.width = `${shield}%`;
+    document.getElementById('shieldText').textContent = Math.ceil(shield);
+}
+
+// Modify the startGame function to show HUD
 function startGame() {
     // Create floor for game scene
     const floorGeometry = new THREE.PlaneGeometry(187.5, 187.5);
@@ -253,12 +279,18 @@ function startGame() {
     document.getElementById('backgroundScene').style.display = 'none';
     document.getElementById('gameScene').style.display = 'block';
     
+    // Show HUD and initialize stats
+    document.getElementById('hud').style.display = 'block';
+    health = 100;
+    shield = 0;
+    updateHUD();
+    
     gameStarted = true;
 }
 
 // Add pointer lock setup
 document.addEventListener('click', () => {
-    if (gameStarted && !isLocked) {
+    if (gameStarted && !isLocked && !isPaused) {
         document.body.requestPointerLock();
     }
 });
@@ -286,11 +318,31 @@ document.addEventListener('mousemove', (event) => {
 const keys = { w: false, a: false, s: false, d: false, shift: false, space: false };
 
 // Update keydown/keyup listeners
-document.addEventListener('keydown', (e) => {
-    const key = e.key.toLowerCase();
+document.addEventListener('keydown', (event) => {
+    const key = event.key.toLowerCase();
     if (key in keys) keys[key] = true;
-    if (e.code === 'ShiftLeft') keys.shift = true;
-    if (e.code === 'Space') keys.space = true;
+    if (event.code === 'ShiftLeft') keys.shift = true;
+    if (event.code === 'Space') keys.space = true;
+    if (event.code === 'F11') {
+        event.preventDefault();
+        if (!document.fullscreenElement) {
+            document.documentElement.requestFullscreen();
+        } else {
+            document.exitFullscreen();
+        }
+    }
+    if (event.code === 'Escape' && document.pointerLockElement) {
+        document.exitPointerLock();
+    }
+    if (event.code === 'KeyP' && gameStarted) {
+        isPaused = !isPaused;
+        if (isPaused) {
+            document.exitPointerLock();
+            document.getElementById('pauseMenu').style.display = 'block';
+        } else {
+            document.getElementById('pauseMenu').style.display = 'none';
+        }
+    }
 });
 
 document.addEventListener('keyup', (e) => {
@@ -409,6 +461,20 @@ function updatePlayer() {
 function animate() {
     requestAnimationFrame(animate);
     
+    // FPS counter
+    if (showFPS) {
+        frameCount++;
+        const currentTime = performance.now();
+        const elapsed = currentTime - lastTime;
+        
+        if (elapsed >= 1000) {
+            const fps = Math.round((frameCount * 1000) / elapsed);
+            document.getElementById('fps').textContent = fps;
+            frameCount = 0;
+            lastTime = currentTime;
+        }
+    }
+    
     if (!gameStarted) {
         // Menu scene animation
         const time = Date.now() * 0.0002; // Slower rotation
@@ -421,7 +487,7 @@ function animate() {
         menuCamera.lookAt(0, 0, 0);
         
         menuRenderer.render(menuScene, menuCamera);
-    } else {
+    } else if (!isPaused) {
         if (player) {
             updatePlayer();
         }
@@ -429,15 +495,54 @@ function animate() {
     }
 }
 
-// Event listeners
-document.getElementById('startGame').addEventListener('click', () => {
-    gameStarted = true;
-    document.getElementById('characterMenu').style.display = 'none';
-    document.getElementById('backgroundScene').style.display = 'none';
-    document.getElementById('gameScene').style.display = 'block';
-    startGame();
+// Add console command
+window.toggleFPS = function() {
+    showFPS = !showFPS;
+    document.getElementById('fpsCounter').style.display = showFPS ? 'block' : 'none';
+    console.log(`FPS counter ${showFPS ? 'enabled' : 'disabled'}`);
+};
+
+// Add pause menu event listeners
+document.getElementById('resumeButton').addEventListener('click', () => {
+    isPaused = false;
+    document.getElementById('pauseMenu').style.display = 'none';
+    document.body.requestPointerLock();
+});
+
+document.getElementById('returnToMainButton').addEventListener('click', () => {
+    // Reset game state
+    isPaused = false;
+    gameStarted = false;
+    
+    // Hide all game elements
+    document.getElementById('pauseMenu').style.display = 'none';
+    document.getElementById('gameScene').style.display = 'none';
+    
+    // Show menu elements
+    document.getElementById('menu').style.display = 'block';
+    document.getElementById('backgroundScene').style.display = 'block';
+    
+    // Reset player and camera
+    if (player) {
+        scene.remove(player);
+        player = null;
+    }
+    
+    // Clear mountains
+    mountains.forEach(mountain => scene.remove(mountain));
+    mountains = [];
+    
+    // Hide HUD
+    document.getElementById('hud').style.display = 'none';
+    
+    // Reset stats
+    health = 100;
+    shield = 0;
 });
 
 // Initialize menu scene and start animation
 createMenuScene();
 animate();
+
+// Add to controls menu
+console.log('Type toggleFPS() in the console to show/hide FPS counter');

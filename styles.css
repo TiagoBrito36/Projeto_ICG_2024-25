@@ -70,6 +70,20 @@ canvas {
     background-color: #6a4f4f;
 }
 
+.menu ul {
+    list-style: none;
+    padding: 0;
+    margin: 20px 0;
+    text-align: left;
+}
+
+.menu ul li {
+    margin: 10px 0;
+    padding: 5px 20px;
+    background-color: rgba(74, 47, 47, 0.5);
+    border-radius: 5px;
+}
+
 .color-options {
     display: flex;
     justify-content: center;
@@ -89,3 +103,65 @@ canvas {
 .color-btn[data-color="0xff0000"] { background-color: #ff0000; }
 .color-btn[data-color="0x0000ff"] { background-color: #0000ff; }
 .color-btn[data-color="0xffff00"] { background-color: #ffff00; }
+
+#hud {
+    position: fixed;
+    top: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 1000;
+    pointer-events: none;
+}
+
+.stats-container {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    background-color: rgba(0, 0, 0, 0.5);
+    padding: 10px;
+    border-radius: 5px;
+}
+
+.stat-bar {
+    position: relative;
+    width: 200px;
+    height: 20px;
+    background-color: rgba(0, 0, 0, 0.5);
+    border-radius: 10px;
+    overflow: hidden;
+}
+
+.bar {
+    height: 100%;
+    transition: width 0.3s ease;
+}
+
+.health {
+    background-color: #ff3333;
+}
+
+.shield {
+    background-color: #3333ff;
+}
+
+.stat-bar span {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    color: white;
+    font-weight: bold;
+    text-shadow: 1px 1px 2px black;
+}
+
+#fpsCounter {
+    position: fixed;
+    top: 10px;
+    left: 10px;
+    background-color: rgba(0, 0, 0, 0.5);
+    color: white;
+    padding: 5px 10px;
+    border-radius: 3px;
+    font-family: monospace;
+    z-index: 1000;
+}

@@ -28,9 +28,33 @@
 			<ul>
 				<li>WASD - Move</li>
 				<li>Mouse - Look around</li>
+				<li>SHIFT - Crouch</li>
+				<li>SPACE - Jump</li>
+				 <li>P - Pause game</li>
 				<li>ESC - Exit pointer lock</li>
+				<li>F11 - Toggle fullscreen</li>
 			</ul>
 			<button id="backButton">Back</button>
+		</div>
+		<div id="pauseMenu" class="menu" style="display: none;">
+			<h2>Game Paused</h2>
+			<button id="resumeButton">Resume Game</button>
+			<button id="returnToMainButton">Return to Main Menu</button>
+		</div>
+		<div id="hud" style="display: none;">
+			<div class="stats-container">
+				<div class="stat-bar">
+					<div id="shieldBar" class="bar shield"></div>
+					<span id="shieldText">0</span>
+				</div>
+				<div class="stat-bar">
+					<div id="healthBar" class="bar health"></div>
+					<span id="healthText">100</span>
+				</div>
+			</div>
+		</div>
+		<div id="fpsCounter" style="display: none;">
+			FPS: <span id="fps">0</span>
 		</div>
 		<script type="module" src="./main.js"></script>
 	</body>
