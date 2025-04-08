@@ -104,30 +104,38 @@ const CROUCH_HEIGHT = 1;
 let mountains = [];
 let isPaused = false;
 
-// Add color selection functionality
+// Update the color selection functionality
+let selectedColor = null;
+const startGameButton = document.getElementById('startGame');
+
 document.querySelectorAll('.color-btn').forEach(button => {
     button.addEventListener('click', () => {
-        playerColor = parseInt(button.dataset.color);
+        selectedColor = parseInt(button.dataset.color);
+        playerColor = selectedColor;
+        
+        // Update button classes
         document.querySelectorAll('.color-btn').forEach(btn => {
-            btn.style.border = '3px solid transparent';
+            btn.classList.remove('selected');
         });
-        button.style.border = '3px solid white';
+        button.classList.add('selected');
+        
+        // Enable start game button
+        startGameButton.disabled = false;
     });
 });
 
-// Add after your color selection functionality
+// Update the start game event listener
 document.getElementById('startGame').addEventListener('click', () => {
-    if (!playerColor) {
-        console.warn('Please select a color first');
+    if (!selectedColor) {
+        alert('Please select a color first!');
         return;
     }
-    // Start the game
+    
     gameStarted = true;
     document.getElementById('characterMenu').style.display = 'none';
     document.getElementById('backgroundScene').style.display = 'none';
     document.getElementById('gameScene').style.display = 'block';
     startGame();
-    // Request pointer lock
     document.body.requestPointerLock();
 });
 
@@ -414,6 +422,13 @@ function updatePlayer() {
         player.position.z += direction.x * Math.sin(yawObject.rotation.y) * currentSpeed;
     }
 
+    // Add boundary check (place this before mountain collision)
+    const BOUNDARY_LIMIT = 75; // Changed from 83.5 to 75 for tighter boundary
+    
+    // Clamp player position within boundaries
+    player.position.x = Math.max(-BOUNDARY_LIMIT, Math.min(BOUNDARY_LIMIT, player.position.x));
+    player.position.z = Math.max(-BOUNDARY_LIMIT, Math.min(BOUNDARY_LIMIT, player.position.z));
+
     // Mountain collision detection with sliding
     const playerRadius = 0.5;
     let collision = false;
@@ -514,7 +529,19 @@ document.getElementById('returnToMainButton').addEventListener('click', () => {
     isPaused = false;
     gameStarted = false;
     
-    // Hide all game elements
+    // Reset color selection
+    selectedColor = null;
+    playerColor = 0x00ff00;
+    
+    // Reset color buttons
+    document.querySelectorAll('.color-btn').forEach(btn => {
+        btn.classList.remove('selected');
+    });
+    
+    // Disable start game button
+    document.getElementById('startGame').disabled = true;
+    
+    // Hide game elements
     document.getElementById('pauseMenu').style.display = 'none';
     document.getElementById('gameScene').style.display = 'none';
     

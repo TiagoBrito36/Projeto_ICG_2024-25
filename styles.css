@@ -70,6 +70,12 @@ canvas {
     background-color: #6a4f4f;
 }
 
+.menu button:disabled {
+    background-color: #2a1f1f;
+    cursor: not-allowed;
+    opacity: 0.6;
+}
+
 .menu ul {
     list-style: none;
     padding: 0;
@@ -92,17 +98,78 @@ canvas {
 }
 
 .color-btn {
-    width: 50px !important;
+    width: 50px;
     height: 50px;
-    border-radius: 50% !important;
-    cursor: pointer;
+    margin: 10px;
     border: 3px solid transparent;
+    border-radius: 50%;
+    cursor: pointer;
+    transition: all 0.3s ease;
 }
 
+.color-btn:hover {
+    transform: scale(1.1);
+}
+
+.color-btn.selected {
+    border: 3px solid white;
+    box-shadow: 0 0 10px rgba(255, 255, 255, 0.5);
+}
+
+/* Update the specific color buttons */
 .color-btn[data-color="0x00ff00"] { background-color: #00ff00; }
+.color-btn:hover[data-color="0x00ff00"] { background-color: #00ff00; }
 .color-btn[data-color="0xff0000"] { background-color: #ff0000; }
+.color-btn:hover[data-color="0xff0000"] { background-color: #ff0000; }
 .color-btn[data-color="0x0000ff"] { background-color: #0000ff; }
+.color-btn:hover[data-color="0x0000ff"] { background-color: #0000ff; }
 .color-btn[data-color="0xffff00"] { background-color: #ffff00; }
+.color-btn:hover[data-color="0xffff00"] { background-color: #ffff00; }
+
+#startGame {
+    background-color: #4a2f2f;
+    color: white;
+    padding: 15px 30px;
+    border: none;
+    border-radius: 5px;
+    font-size: 1.2em;
+    transition: all 0.3s ease;
+    cursor: pointer;
+}
+
+#startGame:disabled {
+    background-color: #1a1a1a;
+    color: #666666;
+    transform: scale(0.95);
+    cursor: not-allowed;
+    position: relative;
+}
+
+#startGame:disabled::after {
+    content: "Select a color first!";
+    position: absolute;
+    bottom: -30px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 0.8em;
+    color: #ff4444;
+    white-space: nowrap;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+}
+
+#startGame:disabled:hover::after {
+    opacity: 1;
+}
+
+#startGame:not(:disabled):hover {
+    background-color: #6a4f4f;
+    transform: scale(1.05);
+}
+
+#startGame:not(:disabled):active {
+    transform: scale(0.98);
+}
 
 #hud {
     position: fixed;
