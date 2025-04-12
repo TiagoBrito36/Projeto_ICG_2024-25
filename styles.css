@@ -171,19 +171,23 @@ canvas {
     transform: scale(0.98);
 }
 
+/* Fix HUD positioning */
 #hud {
     position: fixed;
-    top: 20px;
-    left: 50%;
-    transform: translateX(-50%);
-    z-index: 1000;
-    pointer-events: none;
-}
-
-.stats-container {
+    bottom: 20px;
+    left: 0;
+    width: 100%;
     display: flex;
     flex-direction: column;
-    gap: 5px;
+    align-items: center;
+    z-index: 100; /* Ensure it's above other elements */
+}
+
+/* Stats container positioning */
+.stats-container {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 15px;
     background-color: rgba(0, 0, 0, 0.5);
     padding: 10px;
     border-radius: 5px;
@@ -231,4 +235,149 @@ canvas {
     border-radius: 3px;
     font-family: monospace;
     z-index: 1000;
+}
+
+/* Fix item bar positioning - remove absolute positioning */
+#itemBar {
+    display: flex;
+    gap: 10px;
+    /* Remove these conflicting styles:
+    position: absolute;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%); */
+    margin-top: 15px; /* Add margin between stats and item bar */
+}
+
+.item-slot {
+    width: 64px;
+    height: 64px;
+    background-color: rgba(0, 0, 0, 0.5);
+    border: 2px solid #444;
+    border-radius: 8px;
+    position: relative;
+    transition: all 0.2s;
+}
+
+.item-slot.selected {
+    border-color: #fff;
+    background-color: rgba(60, 60, 60, 0.7);
+    transform: translateY(-5px);
+}
+
+.item-content {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    color: white;
+    font-size: 24px;
+}
+
+.slot-number {
+    position: absolute;
+    bottom: 2px;
+    right: 5px;
+    color: white;
+    font-size: 12px;
+}
+
+/* Inventory styles */
+#inventory {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background-color: rgba(0, 0, 0, 0.8);
+    border: 2px solid #4a2f2f;
+    border-radius: 10px;
+    width: 320px;
+    z-index: 200;
+    color: white;
+    padding: 15px;
+}
+
+.inventory-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 15px;
+    border-bottom: 1px solid #4a2f2f;
+    padding-bottom: 10px;
+}
+
+.inventory-header h3 {
+    margin: 0;
+}
+
+.inventory-header button {
+    background: none;
+    border: none;
+    color: white;
+    font-size: 24px;
+    cursor: pointer;
+}
+
+.inventory-grid {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    grid-gap: 8px;
+    margin-bottom: 15px;
+}
+
+.inventory-slot {
+    width: 50px;
+    height: 50px;
+    background-color: rgba(0, 0, 0, 0.5);
+    border: 2px solid #444;
+    border-radius: 5px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    cursor: pointer;
+    transition: all 0.2s;
+    /* Add this to hide content */
+    font-size: 0;
+}
+
+/* Add a subtle background color change instead */
+.inventory-slot:not(.empty) {
+    background-color: rgba(74, 47, 47, 0.5);
+}
+
+.inventory-slot.selected {
+    border-color: #fff;
+    background-color: rgba(60, 60, 60, 0.7);
+}
+
+.inventory-slot.empty {
+    cursor: default;
+}
+
+.inventory-footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-top: 1px solid #4a2f2f;
+    padding-top: 10px;
+}
+
+.item-info {
+    flex: 1;
+    font-size: 12px;
+}
+
+#useInventoryItem {
+    background-color: #4a2f2f;
+    color: white;
+    border: none;
+    padding: 5px 15px;
+    border-radius: 5px;
+    cursor: pointer;
+}
+
+#useInventoryItem:disabled {
+    background-color: #2a1f1f;
+    cursor: not-allowed;
 }
