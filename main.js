@@ -55,6 +55,126 @@ let bobTimer = 0;
 let knifeAnimationInProgress = false;
 let knifeAnimationId = null;
 
+// Add these global variables for the round system
+let currentRound = 0;
+let totalRounds = 5;
+let enemies = [];
+let activeEnemies = [];
+let isRoundActive = false;
+let isGameOver = false;
+let roundCountdown = 10;
+let betweenRoundTime = 15;
+let countdownInterval;
+
+// Statistics tracking
+const gameStats = {
+    damageDealt: 0,
+    damageTaken: 0,
+    kills: {
+        normal: 0,
+        tank: 0,
+        ranged: 0,
+        boss: 0
+    }
+};
+
+// Enemy types constants
+const ENEMY_TYPES = {
+    NORMAL: 'normal',
+    TANK: 'tank',
+    RANGED: 'ranged',
+    BOSS: 'boss'
+};
+
+// Add the missing shuffleArray function
+function shuffleArray(array) {
+    for (let i = array.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [array[i], array[j]] = [array[j], array[i]]; // Swap elements
+    }
+    return array;
+}
+
+// Adjust enemy spawn delays to be more consistent and faster
+const enemyConfigs = {
+    [ENEMY_TYPES.NORMAL]: {
+        health: 40,
+        speed: 0.05,
+        damage: 10,
+        size: { width: 0.8, height: 1.8, depth: 0.8 },
+        color: 0xff0000,
+        attackRange: 2,
+        attackCooldown: 1000,
+        spawnDelay: 300 // Reduced from 500
+    },
+    [ENEMY_TYPES.TANK]: {
+        health: 150,
+        speed: 0.025,
+        damage: 25,
+        size: { width: 1.5, height: 2.2, depth: 1.5 },
+        color: 0x990000,
+        attackRange: 2.5,
+        attackCooldown: 2000,
+        spawnDelay: 600 // Reduced from 1500
+    },
+    [ENEMY_TYPES.RANGED]: {
+        health: 60,
+        speed: 0.05,
+        damage: 10,
+        size: { width: 0.8, height: 2.3, depth: 0.8 },
+        color: 0xff6600,
+        attackRange: 15,
+        attackCooldown: 2000,
+        projectileSpeed: 0.3,
+        spawnDelay: 400 // Reduced from 1000
+    },
+    [ENEMY_TYPES.BOSS]: {
+        health: 500,
+        speed: 0.04,
+        damage: 30,
+        size: { width: 2.5, height: 3, depth: 2.5 },
+        color: 0x660066,
+        attackRange: 3,
+        attackCooldown: 3000,
+        specialAttackCooldown: 10000,
+        spawnDelay: 1000 // Reduced from 3000
+    }
+};
+
+// Round configurations
+const roundConfigs = [
+    { // Round 1
+        normal: 10,
+        tank: 0,
+        ranged: 0,
+        boss: 0
+    },
+    { // Round 2
+        normal: 20,
+        tank: 0,
+        ranged: 0,
+        boss: 0
+    },
+    { // Round 3
+        normal: 25,
+        tank: 2,
+        ranged: 0,
+        boss: 0
+    },
+    { // Round 4
+        normal: 25,
+        tank: 2,
+        ranged: 5,
+        boss: 0
+    },
+    { // Round 5
+        normal: 22,
+        tank: 5,
+        ranged: 10,
+        boss: 1
+    }
+];
+
 // Update the initializeInventory function
 function initializeInventory() {
     const inventoryGrid = document.querySelector('.inventory-grid');
@@ -739,7 +859,7 @@ function checkCollisions(x, z) {
     return false; // No collision
 }
 
-// Modify the startGame function to show HUD
+// Update your startGame function
 function startGame() {
     // Create floor for game scene
     const floorGeometry = new THREE.PlaneGeometry(187.5, 187.5);
@@ -792,14 +912,12 @@ function startGame() {
         const mountain = new THREE.Mesh(mountainGeometry, mountainMaterial);
         mountain.position.set(x, baseHeight / 2, z);
         mountain.rotation.y = Math.random() * Math.PI / 2;
-        
-        mountains.push(mountain);
         scene.add(mountain);
+        mountains.push(mountain);
     });
 
-    // Set up camera controls
-    yawObject = new THREE.Object3D();
     pitchObject = new THREE.Object3D();
+    yawObject = new THREE.Object3D();
     yawObject.add(pitchObject);
     pitchObject.add(camera);
     player.add(yawObject);
@@ -822,7 +940,7 @@ function startGame() {
     // Show the HUD
     document.getElementById('hud').style.display = 'flex';
     
-    // Update health and shield values
+    // Reset health and shield
     health = 100;
     shield = 0;
     updateHUD();
@@ -846,6 +964,9 @@ function startGame() {
     }, 100);
     
     gameStarted = true;
+
+    // Start the rounds
+    startRounds();
 }
 
 // Initialize menu scene first
@@ -959,6 +1080,11 @@ document.addEventListener('click', (event) => {
             // Use the selected item when locked and playing
             // This should work regardless of movement state
             useSelectedItem();
+
+            // Check for enemy hit if using knife
+            if (inventory[selectedSlot] === 0) { // Knife is item type 0
+                checkEnemyHit();
+            }
         }
     }
 });
@@ -1131,13 +1257,13 @@ document.addEventListener('keyup', (e) => {
         }
     }
     if (e.code === 'Space') keys.space = false;
-});
+}); // Added missing closing parenthesis here
 
 // Replace the existing animate function
 function animate() {
     requestAnimationFrame(animate);
     
-    // FPS counter
+    // FPS counter logic
     if (showFPS) {
         frameCount++;
         const currentTime = performance.now();
@@ -1163,10 +1289,13 @@ function animate() {
         menuCamera.lookAt(0, 0, 0);
         
         menuRenderer.render(menuScene, menuCamera);
-    } else if (!isPaused) {
+    } else if (!isPaused && !isGameOver) {
         if (player) {
             updatePlayer();
-            updateWeaponVisibility(); // Make sure visibility is updated every frame
+            updateWeaponVisibility();
+            
+            // Add this line to update enemies
+            updateEnemies();
         }
         renderer.render(scene, camera);
     }
@@ -1229,6 +1358,13 @@ document.getElementById('returnToMainButton').addEventListener('click', () => {
     // Reset stats
     health = 100;
     shield = 0;
+    
+    // FIXED: Clear countdown and hide round information
+    if (countdownInterval) {
+        clearInterval(countdownInterval);
+    }
+    document.getElementById('roundInfo').style.display = 'none';
+    document.getElementById('countdown').style.display = 'none';
 });
 
 // Add these event listeners after your other pause menu event listeners
@@ -1261,3 +1397,968 @@ animate();
 
 // Add to controls menu
 console.log('Type toggleFPS() in the console to show/hide FPS counter');
+
+// Function to start the game rounds
+function startRounds() {
+    // Reset game state
+    currentRound = 0;
+    enemies = [];
+    activeEnemies = [];
+    isRoundActive = false;
+    isGameOver = false;
+    
+    // Reset statistics
+    gameStats.damageDealt = 0;
+    gameStats.damageTaken = 0;
+    gameStats.kills.normal = 0;
+    gameStats.kills.tank = 0;
+    gameStats.kills.ranged = 0;
+    gameStats.kills.boss = 0;
+    
+    // Show round information UI
+    document.getElementById('roundInfo').style.display = 'block';
+    
+    // Start initial countdown
+    startCountdown(10, () => {
+        startNextRound();
+    });
+}
+
+// Function to start countdown
+function startCountdown(seconds, callback) {
+    roundCountdown = seconds;
+    
+    // Update UI
+    const countdownElement = document.getElementById('countdown');
+    countdownElement.textContent = roundCountdown;
+    countdownElement.style.display = 'block';
+    
+    // Clear any existing interval
+    if (countdownInterval) {
+        clearInterval(countdownInterval);
+    }
+    
+    // Start new countdown
+    countdownInterval = setInterval(() => {
+        roundCountdown--;
+        
+        if (roundCountdown <= 0) {
+            clearInterval(countdownInterval);
+            countdownElement.style.display = 'none';
+            
+            if (callback) {
+                callback();
+            }
+        } else {
+            countdownElement.textContent = roundCountdown;
+        }
+    }, 1000);
+}
+
+// Function to start the next round
+function startNextRound() {
+    currentRound++;
+    
+    if (currentRound > totalRounds) {
+        // Game completed
+        showVictoryScreen();
+        return;
+    }
+    
+    // Update round display
+    document.getElementById('roundDisplay').textContent = `Round ${currentRound}/${totalRounds}`;
+    
+    // Get current round configuration
+    const config = roundConfigs[currentRound - 1];
+    
+    // Calculate total enemies for this round
+    const totalEnemies = config.normal + config.tank + config.ranged + config.boss;
+    document.getElementById('enemiesRemaining').textContent = `Enemies: ${totalEnemies}`;
+    
+    // Start round
+    isRoundActive = true;
+    
+    // Spawn enemies based on round configuration
+    spawnEnemiesForRound(config);
+}
+
+// Function to handle enemy spawning for a round
+function spawnEnemiesForRound(config) {
+    let spawnQueue = [];
+    
+    // Add normal enemies to spawn queue
+    for (let i = 0; i < config.normal; i++) {
+        spawnQueue.push(ENEMY_TYPES.NORMAL);
+    }
+    
+    // Add tank enemies to spawn queue
+    for (let i = 0; i < config.tank; i++) {
+        spawnQueue.push(ENEMY_TYPES.TANK);
+    }
+    
+    // Add ranged enemies to spawn queue
+    for (let i = 0; i < config.ranged; i++) {
+        spawnQueue.push(ENEMY_TYPES.RANGED);
+    }
+    
+    // Add boss enemies to spawn queue
+    for (let i = 0; i < config.boss; i++) {
+        spawnQueue.push(ENEMY_TYPES.BOSS);
+    }
+    
+    // Shuffle spawn queue for randomness
+    spawnQueue = shuffleArray(spawnQueue);
+    
+    // Start spawning enemies from queue
+    spawnEnemiesFromQueue(spawnQueue);
+}
+
+// Function to spawn enemies from queue with delays
+function spawnEnemiesFromQueue(queue) {
+    if (queue.length === 0 || isGameOver) return;
+    
+    const enemyType = queue.shift();
+    const config = enemyConfigs[enemyType];
+    
+    // Spawn the enemy
+    spawnEnemy(enemyType);
+    
+    // Schedule next spawn
+    setTimeout(() => {
+        spawnEnemiesFromQueue(queue);
+    }, config.spawnDelay);
+}
+
+// Function to spawn a single enemy
+function spawnEnemy(enemyType) {
+    const config = enemyConfigs[enemyType];
+    
+    // Create enemy mesh
+    const geometry = new THREE.BoxGeometry(
+        config.size.width,
+        config.size.height,
+        config.size.depth
+    );
+    const material = new THREE.MeshPhongMaterial({ color: config.color });
+    const enemy = new THREE.Mesh(geometry, material);
+    
+    // Position enemy at a random location on the edge of the map
+    const spawnRadius = 70;
+    const angle = Math.random() * Math.PI * 2;
+    enemy.position.x = Math.cos(angle) * spawnRadius;
+    enemy.position.z = Math.sin(angle) * spawnRadius;
+    enemy.position.y = config.size.height / 2;
+    
+    // Add enemy metadata
+    enemy.userData = {
+        type: enemyType,
+        health: config.health,
+        maxHealth: config.health,
+        speed: config.speed,
+        damage: config.damage,
+        attackRange: config.attackRange,
+        lastAttackTime: 0,
+        attackCooldown: config.attackCooldown
+    };
+    
+    // Add special properties based on enemy type
+    if (enemyType === ENEMY_TYPES.RANGED) {
+        enemy.userData.projectileSpeed = config.projectileSpeed;
+    }
+    
+    if (enemyType === ENEMY_TYPES.BOSS) {
+        enemy.userData.specialAttackCooldown = config.specialAttackCooldown;
+        enemy.userData.lastSpecialAttackTime = 0;
+    }
+    
+    // Add enemy to the scene and tracking arrays
+    scene.add(enemy);
+    enemies.push(enemy);
+    activeEnemies.push(enemy);
+}
+
+// Function to update enemies
+function updateEnemies() {
+    if (!isRoundActive || isGameOver) return;
+    
+    const now = performance.now();
+    
+    for (let i = activeEnemies.length - 1; i >= 0; i--) {
+        const enemy = activeEnemies[i];
+        
+        // Skip if enemy was removed
+        if (!enemy.userData) continue;
+        
+        // Calculate direction to player
+        const directionToPlayer = new THREE.Vector3();
+        directionToPlayer.subVectors(player.position, enemy.position);
+        directionToPlayer.y = 0; // Keep enemies at ground level
+        const distanceToPlayer = directionToPlayer.length();
+        directionToPlayer.normalize();
+        
+        // Enemy behavior based on type
+        switch (enemy.userData.type) {
+            case ENEMY_TYPES.NORMAL:
+                // Move towards player if not in attack range
+                if (distanceToPlayer > enemy.userData.attackRange) {
+                    moveEnemy(enemy, directionToPlayer);
+                } else {
+                    // Attack player if cooldown expired
+                    if (now - enemy.userData.lastAttackTime >= enemy.userData.attackCooldown) {
+                        attackPlayer(enemy);
+                        enemy.userData.lastAttackTime = now;
+                    }
+                }
+                break;
+                
+            case ENEMY_TYPES.TANK:
+                // Move towards player if not in attack range
+                if (distanceToPlayer > enemy.userData.attackRange) {
+                    moveEnemy(enemy, directionToPlayer);
+                } else {
+                    // Attack player if cooldown expired
+                    if (now - enemy.userData.lastAttackTime >= enemy.userData.attackCooldown) {
+                        attackPlayer(enemy);
+                        enemy.userData.lastAttackTime = now;
+                    }
+                }
+                break;
+                
+            case ENEMY_TYPES.RANGED:
+                // Keep distance from player
+                const optimalRange = enemy.userData.attackRange * 0.7;
+                
+                if (distanceToPlayer < optimalRange - 2) {
+                    // Too close, move away
+                    moveEnemy(enemy, directionToPlayer.clone().negate());
+                } else if (distanceToPlayer > optimalRange + 2) {
+                    // Too far, move closer
+                    moveEnemy(enemy, directionToPlayer);
+                } else {
+                    // In range, attack if cooldown expired
+                    if (now - enemy.userData.lastAttackTime >= enemy.userData.attackCooldown) {
+                        fireProjectile(enemy, directionToPlayer);
+                        enemy.userData.lastAttackTime = now;
+                    }
+                }
+                break;
+                
+            case ENEMY_TYPES.BOSS:
+                // Move towards player if not in attack range
+                if (distanceToPlayer > enemy.userData.attackRange) {
+                    moveEnemy(enemy, directionToPlayer);
+                } else {
+                    // Regular attack if cooldown expired
+                    if (now - enemy.userData.lastAttackTime >= enemy.userData.attackCooldown) {
+                        attackPlayer(enemy);
+                        enemy.userData.lastAttackTime = now;
+                    }
+                    
+                    // Special attack if cooldown expired
+                    if (now - enemy.userData.lastSpecialAttackTime >= enemy.userData.specialAttackCooldown) {
+                        bossSpecialAttack(enemy);
+                        enemy.userData.lastSpecialAttackTime = now;
+                    }
+                }
+                break;
+        }
+        
+        // Make enemy face player
+        enemy.lookAt(player.position);
+    }
+    
+    // Update projectiles
+    updateProjectiles();
+    
+    // Check if round is complete
+    if (activeEnemies.length === 0 && isRoundActive) {
+        endRound();
+    }
+}
+
+// Function to move enemy
+function moveEnemy(enemy, direction) {
+    const speed = enemy.userData.speed;
+    const movement = direction.clone().multiplyScalar(speed);
+    
+    // Store original position for collision detection
+    const originalX = enemy.position.x;
+    const originalZ = enemy.position.z;
+    
+    // Apply movement
+    enemy.position.x += movement.x;
+    enemy.position.z += movement.z;
+    
+    // Boundary check
+    const boundary = 75;
+    enemy.position.x = Math.max(-boundary, Math.min(boundary, enemy.position.x));
+    enemy.position.z = Math.max(-boundary, Math.min(boundary, enemy.position.z));
+    
+    // Basic collision detection with player and other enemies
+    if (checkEnemyCollisions(enemy, originalX, originalZ)) {
+        enemy.position.x = originalX;
+        enemy.position.z = originalZ;
+    }
+}
+
+// Function to check enemy collisions
+function checkEnemyCollisions(enemy, originalX, originalZ) {
+    // Check collision with player
+    const playerRadius = 0.5;
+    const distToPlayer = Math.sqrt(
+        Math.pow(enemy.position.x - player.position.x, 2) +
+        Math.pow(enemy.position.z - player.position.z, 2)
+    );
+    
+    if (distToPlayer < playerRadius + enemy.geometry.parameters.width / 2) {
+        return true;
+    }
+    
+    // Check collision with other enemies
+    for (const otherEnemy of activeEnemies) {
+        if (otherEnemy === enemy) continue;
+        
+        const distToEnemy = Math.sqrt(
+            Math.pow(enemy.position.x - otherEnemy.position.x, 2) +
+            Math.pow(enemy.position.z - otherEnemy.position.z, 2)
+        );
+        
+        const combinedRadius = 
+            enemy.geometry.parameters.width / 2 + 
+            otherEnemy.geometry.parameters.width / 2;
+        
+        if (distToEnemy < combinedRadius * 0.8) {
+            return true;
+        }
+    }
+    
+    return false;
+}
+
+// Projectile system
+const projectiles = [];
+
+// Function to fire a projectile
+function fireProjectile(enemy, direction) {
+    const projectileGeometry = new THREE.SphereGeometry(0.3, 8, 8);
+    const projectileMaterial = new THREE.MeshBasicMaterial({ color: 0xff6600 });
+    const projectile = new THREE.Mesh(projectileGeometry, projectileMaterial);
+    
+    // Position the projectile at the enemy
+    projectile.position.copy(enemy.position);
+    projectile.position.y = enemy.position.y + enemy.geometry.parameters.height * 0.6;
+    
+    // Store projectile metadata
+    projectile.userData = {
+        direction: direction.clone(),
+        speed: enemy.userData.projectileSpeed,
+        damage: enemy.userData.damage,
+        lifetime: 5000, // 5 seconds lifetime
+        spawnTime: performance.now()
+    };
+    
+    // Add projectile to scene and tracking array
+    scene.add(projectile);
+    projectiles.push(projectile);
+}
+
+// Function to update projectiles
+function updateProjectiles() {
+    const now = performance.now();
+    
+    for (let i = projectiles.length - 1; i >= 0; i--) {
+        const projectile = projectiles[i];
+        
+        // Move projectile
+        projectile.position.x += projectile.userData.direction.x * projectile.userData.speed;
+        projectile.position.z += projectile.userData.direction.z * projectile.userData.speed;
+        
+        // Check for collision with player
+        const distToPlayer = Math.sqrt(
+            Math.pow(projectile.position.x - player.position.x, 2) +
+            Math.pow(projectile.position.z - player.position.z, 2)
+        );
+        
+        if (distToPlayer < 0.7) { // Player hit
+            // Apply damage to player
+            takeDamage(projectile.userData.damage);
+            
+            // Remove projectile
+            scene.remove(projectile);
+            projectiles.splice(i, 1);
+            continue;
+        }
+        
+        // Check if projectile has exceeded lifetime
+        if (now - projectile.userData.spawnTime > projectile.userData.lifetime) {
+            scene.remove(projectile);
+            projectiles.splice(i, 1);
+            continue;
+        }
+        
+        // Check if projectile is out of bounds
+        const boundary = 80;
+        if (
+            Math.abs(projectile.position.x) > boundary ||
+            Math.abs(projectile.position.z) > boundary
+        ) {
+            scene.remove(projectile);
+            projectiles.splice(i, 1);
+        }
+    }
+}
+
+// Function for boss special attack (shockwave)
+function bossSpecialAttack(boss) {
+    // Create a visual effect for the shockwave
+    const waveGeometry = new THREE.RingGeometry(0, 1, 32);
+    const waveMaterial = new THREE.MeshBasicMaterial({ 
+        color: 0xff00ff, 
+        transparent: true,
+        opacity: 0.7,
+        side: THREE.DoubleSide 
+    });
+    const wave = new THREE.Mesh(waveGeometry, waveMaterial);
+    
+    wave.position.copy(boss.position);
+    wave.position.y = 0.1;
+    wave.rotation.x = -Math.PI / 2; // Lay flat on ground
+    
+    scene.add(wave);
+    
+    // Animate the shockwave
+    const maxRadius = 15;
+    const duration = 2000; // 2 seconds
+    const startTime = performance.now();
+    
+    // Play shockwave sound
+    // playSound('bossSpecialAttack');
+    
+    // Warning message
+    showNotification("BOSS SHOCKWAVE INCOMING!", 2000);
+    
+    function animateShockwave() {
+        const now = performance.now();
+        const elapsed = now - startTime;
+        const progress = Math.min(elapsed / duration, 1);
+        
+        // Scale the wave based on progress
+        const currentRadius = progress * maxRadius;
+        wave.scale.set(currentRadius, currentRadius, 1);
+        
+        // Fade out as it expands
+        wave.material.opacity = 0.7 * (1 - progress);
+        
+        // Check if the player is hit by the expanding wave
+        const distToPlayer = Math.sqrt(
+            Math.pow(wave.position.x - player.position.x, 2) +
+            Math.pow(wave.position.z - player.position.z, 2)
+        );
+        
+        // Check if player is within the current radius
+        if (distToPlayer < currentRadius && distToPlayer > currentRadius - 1) {
+            // Apply damage to player
+            takeDamage(boss.userData.damage * 1.5);
+        }
+        
+        if (progress < 1) {
+            requestAnimationFrame(animateShockwave);
+        } else {
+            scene.remove(wave);
+        }
+    }
+    
+    animateShockwave();
+}
+
+// Function to attack player
+function attackPlayer(enemy) {
+    // Play attack animation or visual effect
+    
+    // Apply damage to player
+    takeDamage(enemy.userData.damage);
+}
+
+// Function to apply damage to player
+function takeDamage(amount) {
+    // First reduce shield if available
+    if (shield > 0) {
+        if (shield >= amount) {
+            shield -= amount;
+        } else {
+            // If damage exceeds shield, apply remaining to health
+            const remainingDamage = amount - shield;
+            shield = 0;
+            health -= remainingDamage;
+        }
+    } else {
+        // No shield, reduce health directly
+        health -= amount;
+    }
+    
+    // Ensure values don't go below 0
+    shield = Math.max(0, shield);
+    health = Math.max(0, health);
+    
+    // Update HUD
+    updateHUD();
+    
+    // Track damage taken
+    gameStats.damageTaken += amount;
+    
+    // Check for player death
+    if (health <= 0) {
+        handlePlayerDeath();
+    }
+}
+
+// Function to handle player taking damage to enemy
+function damageEnemy(enemy, damage) {
+    if (!enemy || !enemy.userData) return;
+    
+    enemy.userData.health -= damage;
+    
+    // Track damage dealt
+    gameStats.damageDealt += damage;
+    
+    // Check if enemy is defeated
+    if (enemy.userData.health <= 0) {
+        defeatEnemy(enemy);
+    } else {
+        // Flash effect for hit feedback
+        enemy.material.emissive.setHex(0xff0000);
+        setTimeout(() => {
+            if (enemy.material) {
+                enemy.material.emissive.setHex(0x000000);
+            }
+        }, 100);
+    }
+}
+
+// Function to handle enemy defeat
+function defeatEnemy(enemy) {
+    // Update kill statistics
+    switch (enemy.userData.type) {
+        case ENEMY_TYPES.NORMAL:
+            gameStats.kills.normal++;
+            break;
+        case ENEMY_TYPES.TANK:
+            gameStats.kills.tank++;
+            break;
+        case ENEMY_TYPES.RANGED:
+            gameStats.kills.ranged++;
+            break;
+        case ENEMY_TYPES.BOSS:
+            gameStats.kills.boss++;
+            break;
+    }
+    
+    // Remove from activeEnemies array
+    const index = activeEnemies.indexOf(enemy);
+    if (index !== -1) {
+        activeEnemies.splice(index, 1);
+    }
+    
+    // Update enemies remaining count
+    document.getElementById('enemiesRemaining').textContent = `Enemies: ${activeEnemies.length}`;
+    
+    // Create defeat animation
+    createEnemyDefeatAnimation(enemy);
+    
+    // Remove enemy from scene
+    scene.remove(enemy);
+}
+
+// Function to create enemy defeat animation
+function createEnemyDefeatAnimation(enemy) {
+    // Create explosion effect
+    const particles = [];
+    const particleCount = 15;
+    
+    for (let i = 0; i < particleCount; i++) {
+        const geometry = new THREE.BoxGeometry(0.2, 0.2, 0.2);
+        const material = new THREE.MeshBasicMaterial({
+            color: enemy.material.color,
+            transparent: true,
+            opacity: 0.8
+        });
+        
+        const particle = new THREE.Mesh(geometry, material);
+        particle.position.copy(enemy.position);
+        
+        // Random velocity
+        particle.userData = {
+            velocity: new THREE.Vector3(
+                (Math.random() - 0.5) * 0.2,
+                Math.random() * 0.2 + 0.1,
+                (Math.random() - 0.5) * 0.2
+            ),
+            gravity: 0.01,
+            lifetime: 1000,
+            spawnTime: performance.now()
+        };
+        
+        scene.add(particle);
+        particles.push(particle);
+    }
+    
+    // Animate particles
+    function animateParticles() {
+        const now = performance.now();
+        let allDone = true;
+        
+        for (let i = particles.length - 1; i >= 0; i--) {
+            const particle = particles[i];
+            const elapsed = now - particle.userData.spawnTime;
+            
+            if (elapsed > particle.userData.lifetime) {
+                scene.remove(particle);
+                particles.splice(i, 1);
+                continue;
+            }
+            
+            // Still have active particles
+            allDone = false;
+            
+            // Update position
+            particle.position.x += particle.userData.velocity.x;
+            particle.position.y += particle.userData.velocity.y;
+            particle.position.z += particle.userData.velocity.z;
+            
+            // Apply gravity
+            particle.userData.velocity.y -= particle.userData.gravity;
+            
+            // Fade out
+            const progress = elapsed / particle.userData.lifetime;
+            particle.material.opacity = 0.8 * (1 - progress);
+        }
+        
+        if (!allDone) {
+            requestAnimationFrame(animateParticles);
+        }
+    }
+    
+    animateParticles();
+}
+
+// Function to end a round
+function endRound() {
+    isRoundActive = false;
+    
+    // Calculate time until next round
+    const betweenRoundWait = betweenRoundTime + (currentRound - 1) * 5;
+    
+    // Show next round message
+    if (currentRound < totalRounds) {
+        showNotification(`Round ${currentRound} Complete!\nNext round starting in ${betweenRoundWait} seconds...`);
+        
+        // Start countdown to next round
+        startCountdown(betweenRoundWait, () => {
+            startNextRound();
+        });
+    } else {
+        // Last round completed
+        showVictoryScreen();
+    }
+}
+
+// Add this function near your other UI functions
+function showNotification(message, duration = 3000) {
+    // Create notification element if it doesn't exist
+    let notification = document.getElementById('notification');
+    if (!notification) {
+        notification = document.createElement('div');
+        notification.id = 'notification';
+        notification.style.position = 'fixed';
+        notification.style.top = '20%';
+        notification.style.left = '50%';
+        notification.style.transform = 'translateX(-50%)';
+        notification.style.backgroundColor = 'rgba(0, 0, 0, 0.7)';
+        notification.style.color = 'white';
+        notification.style.padding = '15px 20px';
+        notification.style.borderRadius = '5px';
+        notification.style.fontSize = '18px';
+        notification.style.textAlign = 'center';
+        notification.style.zIndex = '1001';
+        notification.style.pointerEvents = 'none';
+        notification.style.transition = 'opacity 0.3s';
+        notification.style.whiteSpace = 'pre-line';
+        document.body.appendChild(notification);
+    }
+    
+    // Set message and show notification
+    notification.textContent = message;
+    notification.style.opacity = '1';
+    
+    // Hide after duration
+    setTimeout(() => {
+        notification.style.opacity = '0';
+    }, duration);
+}
+
+// Direct implementation of game over screen with a 2.5 second delay
+function handlePlayerDeath() {
+    isGameOver = true;
+    
+    // Make sure to exit pointer lock
+    if (document.pointerLockElement) {
+        document.exitPointerLock();
+    }
+    
+    // Hide HUD elements
+    document.getElementById('hud').style.display = 'none';
+    
+    // Show game over message
+    showNotification("You have been defeated!", 2500);
+    
+    // Add 2.5 second delay before showing the game over menu
+    setTimeout(() => {
+        // Create game over screen
+        const gameOverScreen = document.createElement('div');
+        gameOverScreen.id = 'gameOverScreen';
+        gameOverScreen.style.position = 'absolute';
+        gameOverScreen.style.top = '0';
+        gameOverScreen.style.left = '0';
+        gameOverScreen.style.width = '100%';
+        gameOverScreen.style.height = '100%';
+        gameOverScreen.style.backgroundColor = 'rgba(0, 0, 0, 0.8)';
+        gameOverScreen.style.display = 'flex';
+        gameOverScreen.style.justifyContent = 'center';
+        gameOverScreen.style.alignItems = 'center';
+        gameOverScreen.style.zIndex = '2000'; // Increased z-index
+        gameOverScreen.style.pointerEvents = 'auto'; // Ensure mouse events work
+        
+        // Inner container
+        gameOverScreen.innerHTML = `
+            <div style="background-color: #3a1c1c; padding: 30px; border-radius: 10px; text-align: center; pointer-events: auto;">
+                <h1 style="font-size: 36px; margin-bottom: 20px; color: #ff0000;">GAME OVER</h1>
+                <button id="gameOverReturnButton" style="padding: 12px 24px; background-color: #880000; color: white; border: none; border-radius: 5px; font-size: 18px; cursor: pointer;">Return to Main Menu</button>
+            </div>
+        `;
+        
+        document.body.appendChild(gameOverScreen);
+        
+        // Force mouse cursor to be visible
+        document.body.style.cursor = 'auto';
+        
+        // Add event listener to the return button
+        document.getElementById('gameOverReturnButton').addEventListener('click', () => {
+            // Remove game over screen
+            document.getElementById('gameOverScreen').remove();
+            
+            // Reset game state
+            resetGame();
+            document.getElementById('roundInfo').style.display = 'none';
+            
+            // Show main menu
+            document.getElementById('menu').style.display = 'block';
+            document.getElementById('backgroundScene').style.display = 'block';
+            document.getElementById('gameScene').style.display = 'none';
+            
+            // Reset game started state
+            gameStarted = false;
+        });
+    }, 2500); // 2.5 second delay
+}
+
+// Function to show victory screen
+function showVictoryScreen() {
+    isGameOver = true;
+    
+    // Update statistics on victory screen
+    document.getElementById('damageDealt').textContent = `Damage Dealt: ${gameStats.damageDealt}`;
+    document.getElementById('damageTaken').textContent = `Damage Taken: ${gameStats.damageTaken}`;
+    document.getElementById('normalKills').textContent = `Normal: ${gameStats.kills.normal}`;
+    document.getElementById('tankKills').textContent = `Tank: ${gameStats.kills.tank}`;
+    document.getElementById('rangedKills').textContent = `Sniper: ${gameStats.kills.ranged}`;
+    document.getElementById('bossKills').textContent = `Boss: ${gameStats.kills.boss}`;
+    
+    // Show victory screen
+    document.getElementById('victoryScreen').style.display = 'flex';
+    document.exitPointerLock();
+}
+
+// Function to reset game state
+function resetGame() {
+    // Clean up enemies
+    for (const enemy of enemies) {
+        scene.remove(enemy);
+    }
+    
+    // Clean up projectiles
+    for (const projectile of projectiles) {
+        scene.remove(projectile);
+    }
+    
+    // Remove player from scene if it exists
+    if (player) {
+        // Make sure to remove knife model from camera first to prevent memory leaks
+        if (knifeModel) {
+            camera.remove(knifeModel);
+            knifeModel = null;
+        }
+        scene.remove(player);
+        player = null; // Clear the reference so a new player can be created
+    }
+    
+    // Reset game state
+    enemies = [];
+    activeEnemies = [];
+    projectiles.length = 0;
+    isRoundActive = false;
+    isGameOver = false;
+    currentRound = 0;
+    
+    // Reset player stats
+    health = 100;
+    shield = 0;
+}
+
+// Function to check if knife hit an enemy
+function checkEnemyHit() {
+    // Get camera direction
+    const cameraDirection = new THREE.Vector3(0, 0, -1);
+    cameraDirection.applyQuaternion(camera.quaternion);
+    
+    // Create raycaster for knife hit detection
+    const raycaster = new THREE.Raycaster(camera.position, cameraDirection);
+    
+    // Set knife parameters
+    const knifeReach = 3; // How far the knife can reach
+    const knifeDamage = 20; // 20 damage per hit (normal enemies have 40 health)
+    raycaster.far = knifeReach;
+    
+    // Check intersections with enemies
+    const enemyMeshes = activeEnemies;
+    const intersects = raycaster.intersectObjects(enemyMeshes);
+    
+    if (intersects.length > 0) {
+        // We hit an enemy
+        const enemy = intersects[0].object;
+        
+        // Apply damage to the enemy (normal enemies take 2 hits to kill)
+        damageEnemy(enemy, knifeDamage);
+        
+        // Add hit effect
+        createHitEffect(intersects[0].point);
+        
+        // Show hit indicator
+        showHitMarker();
+    }
+}
+
+// Function to create a hit effect at the impact point
+function createHitEffect(position) {
+    // Create a small particle burst
+    const particles = [];
+    const particleCount = 5;
+    
+    for (let i = 0; i < particleCount; i++) {
+        const geometry = new THREE.BoxGeometry(0.1, 0.1, 0.1);
+        const material = new THREE.MeshBasicMaterial({
+            color: 0xff0000,
+            transparent: true,
+            opacity: 0.8
+        });
+        
+        const particle = new THREE.Mesh(geometry, material);
+        particle.position.copy(position);
+        
+        // Random velocity
+        particle.userData = {
+            velocity: new THREE.Vector3(
+                (Math.random() - 0.5) * 0.1,
+                (Math.random() - 0.5) * 0.1,
+                (Math.random() - 0.5) * 0.1
+            ),
+            lifetime: 300,
+            spawnTime: performance.now()
+        };
+        
+        scene.add(particle);
+        particles.push(particle);
+    }
+    
+    // Animate particles
+    function animateHitParticles() {
+        const now = performance.now();
+        let allDone = true;
+        
+        for (let i = particles.length - 1; i >= 0; i--) {
+            const particle = particles[i];
+            const elapsed = now - particle.userData.spawnTime;
+            
+            if (elapsed > particle.userData.lifetime) {
+                scene.remove(particle);
+                particles.splice(i, 1);
+                continue;
+            }
+            
+            // Still have active particles
+            allDone = false;
+            
+            // Update position
+            particle.position.x += particle.userData.velocity.x;
+            particle.position.y += particle.userData.velocity.y;
+            particle.position.z += particle.userData.velocity.z;
+            
+            // Fade out
+            const progress = elapsed / particle.userData.lifetime;
+            particle.material.opacity = 0.8 * (1 - progress);
+        }
+        
+        if (!allDone) {
+            requestAnimationFrame(animateHitParticles);
+        }
+    }
+    
+    animateHitParticles();
+}
+
+// Function to show hit marker
+function showHitMarker() {
+    // Create hit marker if it doesn't exist
+    let hitMarker = document.getElementById('hitMarker');
+    if (!hitMarker) {
+        hitMarker = document.createElement('div');
+        hitMarker.id = 'hitMarker';
+        document.body.appendChild(hitMarker);
+        
+        // Add style for hit marker
+        const style = document.createElement('style');
+        style.textContent = `
+            #hitMarker {
+                position: fixed;
+                top: 50%;
+                left: 50%;
+                transform: translate(-50%, -50%);
+                color: #ff0000;
+                font-size: 24px;
+                opacity: 0;
+                transition: opacity 0.1s;
+                z-index: 1000;
+                pointer-events: none;
+            }
+            
+            #hitMarker.show {
+                opacity: 1;
+            }
+        `;
+        document.head.appendChild(style);
+        hitMarker.textContent = '✓';
+    }
+    
+    // Show hit marker briefly
+    hitMarker.classList.add('show');
+    setTimeout(() => {
+        hitMarker.classList.remove('show');
+    }, 100);
+}
+
+// Add an event listener for the return to menu button
+document.getElementById('returnToMenuButton').addEventListener('click', () => {
+    document.getElementById('victoryScreen').style.display = 'none';
+    resetGame();
+    document.getElementById('roundInfo').style.display = 'none';
+    document.getElementById('menu').style.display = 'block';
+});

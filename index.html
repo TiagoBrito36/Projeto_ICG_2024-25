@@ -96,6 +96,34 @@
 		<div id="fpsCounter" style="display: none;">
 			FPS: <span id="fps">0</span>
 		</div>
+
+		<!-- Add to index.html - Round Information UI -->
+		<div id="roundInfo" style="display: none;">
+			<div id="countdown" class="countdown"></div>
+			<div id="roundDisplay" class="round-display">Round 1/5</div>
+			<div id="enemiesRemaining" class="enemies-remaining">Enemies: 10</div>
+		</div>
+
+		<!-- Victory Screen -->
+		<div id="victoryScreen" class="fullscreen-overlay" style="display: none;">
+			<div class="victory-content">
+				<h2>Victory!</h2>
+				<div class="stats-container">
+					<h3>Battle Statistics</h3>
+					<div id="damageDealt" class="stat-row">Damage Dealt: 0</div>
+					<div id="damageTaken" class="stat-row">Damage Taken: 0</div>
+					<div id="enemiesDefeated" class="stat-row">
+						<div>Enemies Defeated:</div>
+						<div id="normalKills" class="enemy-stat">Normal: 0</div>
+						<div id="tankKills" class="enemy-stat">Tank: 0</div>
+						<div id="rangedKills" class="enemy-stat">Sniper: 0</div>
+						<div id="bossKills" class="enemy-stat">Boss: 0</div>
+					</div>
+				</div>
+				<button id="returnToMenuButton" class="large-button">Return to Main Menu</button>
+			</div>
+		</div>
+
 		<script type="importmap">
 			{
 			  "imports": {
