@@ -225,10 +225,11 @@ function updateInventoryDisplay() {
         const slot = slots[index];
         
         if (item !== null) {
-            // Remove text content (icons)
-            slot.textContent = '';
+            // Set icon for non-empty slots
+            slot.textContent = getItemSymbol(item);
             slot.classList.remove('empty');
         } else {
+            // Clear empty slots
             slot.textContent = '';
             slot.classList.add('empty');
         }
@@ -238,7 +239,7 @@ function updateInventoryDisplay() {
 // Helper function to get item symbol
 function getItemSymbol(itemType) {
     switch(itemType) {
-        case 0: return '🔪'; // Using a clearer knife emoji
+        case 0: return '🔪'; // Using a knife emoji for type 0
         case 1: return '🛡️';
         case 2: return '🔋';
         case 3: return '🧪';
@@ -404,48 +405,50 @@ function selectSlot(slot) {
     }
 }
 
-// Replace the useSelectedItem function with this corrected version
+// Update the useSelectedItem function to work regardless of movement state
 function useSelectedItem() {
-    // Check if we have a knife model
-    if (!knifeModel) return;
-    
-    // Get the currently selected item from inventory
+    // Get the currently selected item from inventory (don't check for knifeModel here)
     const item = inventory[selectedSlot];
     
     if (item === 0) { // 0 is the knife/weapon item type
-        console.log('Using knife');
-        // Play knife attack animation
+        // Create knife model if it doesn't exist
+        if (!knifeModel) {
+            createKnifeModel();
+        }
+        
+        // Ensure knife is visible before animating
+        knifeModel.visible = true;
+        
+        // Play knife attack animation (should work even when moving)
         animateKnifeAttack();
+        console.log('Using knife');
     } else if (item !== null) {
         // Handle other item types by applying their effects
         applyItemEffect(item);
     }
 }
 
-// Replace the animateKnifeAttack function with this improved version
+// Replace the animateKnifeAttack function with this enhanced version
 function animateKnifeAttack() {
     if (!knifeModel) return;
     
-    // If an animation is already running, cancel it first
-    if (knifeAnimationInProgress && knifeAnimationId) {
+    // Force cancel any ongoing animation
+    if (knifeAnimationInProgress) {
         cancelAnimationFrame(knifeAnimationId);
+        
+        // Important: Reset knife to original position immediately
+        if (knifeModel.originalPosition && knifeModel.originalRotation) {
+            knifeModel.position.copy(knifeModel.originalPosition);
+            knifeModel.rotation.copy(knifeModel.originalRotation);
+        }
     }
     
     // Mark animation as in progress
     knifeAnimationInProgress = true;
     
-    // Store the original rotation and position
-    const originalRotation = {
-        x: knifeModel.rotation.x,
-        y: knifeModel.rotation.y,
-        z: knifeModel.rotation.z
-    };
-    
-    const originalPosition = {
-        x: knifeModel.position.x,
-        y: knifeModel.position.y,
-        z: knifeModel.position.z
-    };
+    // Store the original rotation and position for reference
+    knifeModel.originalPosition = new THREE.Vector3(0.35, -0.35, -0.5);
+    knifeModel.originalRotation = new THREE.Euler(0, 0, 0);
     
     // Animation constants
     const attackDuration = 200; // milliseconds
@@ -466,10 +469,10 @@ function animateKnifeAttack() {
             const progress = elapsed / attackDuration;
             
             // Apply forward rotation (around X axis)
-            knifeModel.rotation.x = originalRotation.x + (maxRotation * progress);
+            knifeModel.rotation.x = knifeModel.originalRotation.x + (maxRotation * progress);
             
             // Add slight forward movement
-            knifeModel.position.z = originalPosition.z - (thrustDistance * progress);
+            knifeModel.position.z = knifeModel.originalPosition.z - (thrustDistance * progress);
             
             // Store animation ID for potential cancellation
             knifeAnimationId = requestAnimationFrame(animate);
@@ -478,21 +481,17 @@ function animateKnifeAttack() {
             const returnProgress = (elapsed - attackDuration) / returnDuration;
             
             // Smoothly return to original rotation
-            knifeModel.rotation.x = originalRotation.x + (maxRotation * (1 - returnProgress));
+            knifeModel.rotation.x = knifeModel.originalRotation.x + (maxRotation * (1 - returnProgress));
             
             // Return to original position
-            knifeModel.position.z = originalPosition.z - (thrustDistance * (1 - returnProgress));
+            knifeModel.position.z = knifeModel.originalPosition.z - (thrustDistance * (1 - returnProgress));
             
             // Store animation ID for potential cancellation
             knifeAnimationId = requestAnimationFrame(animate);
         } else {
-            // Ensure knife is fully reset to original position and rotation
-            knifeModel.rotation.x = originalRotation.x;
-            knifeModel.rotation.y = originalRotation.y;
-            knifeModel.rotation.z = originalRotation.z;
-            knifeModel.position.x = originalPosition.x;
-            knifeModel.position.y = originalPosition.y;
-            knifeModel.position.z = originalPosition.z;
+            // CRITICAL FIX: Always reset to exact original values
+            knifeModel.position.copy(knifeModel.originalPosition);
+            knifeModel.rotation.copy(knifeModel.originalRotation);
             
             // Clear animation state
             knifeAnimationInProgress = false;
@@ -950,7 +949,7 @@ document.addEventListener('keydown', (event) => {
     }
 });
 
-// Update the click event listener to handle both pointer lock and item usage
+// Modify the click event handler to ensure knife can be used while moving
 document.addEventListener('click', (event) => {
     if (gameStarted && !isPaused) {
         if (!isLocked) {
@@ -958,6 +957,7 @@ document.addEventListener('click', (event) => {
             document.body.requestPointerLock();
         } else {
             // Use the selected item when locked and playing
+            // This should work regardless of movement state
             useSelectedItem();
         }
     }
@@ -1239,6 +1239,21 @@ document.getElementById('controlsButtonPause').addEventListener('click', () => {
     // Keep HUD hidden when in controls
     document.getElementById('hud').style.display = 'none';
 });
+
+// Add this function to help debug knife issues
+function debugKnife() {
+    console.log({
+        knifeExists: !!knifeModel,
+        knifeVisible: knifeModel ? knifeModel.visible : false,
+        animationInProgress: knifeAnimationInProgress,
+        selectedItem: inventory[selectedSlot],
+        selectedSlot: selectedSlot,
+        isMoving: keys.w || keys.a || keys.s || keys.d
+    });
+}
+
+// You can call this from the console with: debugKnife()
+window.debugKnife = debugKnife;
 
 // Initialize menu scene and start animation
 createMenuScene();
