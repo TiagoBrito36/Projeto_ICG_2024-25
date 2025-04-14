@@ -2609,37 +2609,109 @@ function resetGame() {
     pistolReloading = false;
 }
 
-// Function to check if knife hit an enemy
+// Improved knife hit detection function
 function checkEnemyHit() {
-    // Get camera direction
-    const cameraDirection = new THREE.Vector3(0, 0, -1);
-    cameraDirection.applyQuaternion(camera.quaternion);
+    // Get camera position and direction
+    const cameraPosition = new THREE.Vector3();
+    camera.getWorldPosition(cameraPosition);
     
-    // Create raycaster for knife hit detection
-    const raycaster = new THREE.Raycaster(camera.position, cameraDirection);
+    const cameraDirection = new THREE.Vector3(0, 0, -1);
+    camera.getWorldDirection(cameraDirection);
     
     // Set knife parameters
     const knifeReach = 3; // How far the knife can reach
-    const knifeDamage = 20; // 20 damage per hit (normal enemies have 40 health)
-    raycaster.far = knifeReach;
+    const knifeDamage = 20; // 20 damage per hit
     
-    // Check intersections with enemies
-    const enemyMeshes = activeEnemies;
-    const intersects = raycaster.intersectObjects(enemyMeshes);
+    // Create array to track which enemies were hit (to avoid double hits)
+    const hitEnemies = new Set();
     
-    if (intersects.length > 0) {
-        // We hit an enemy
-        const enemy = intersects[0].object;
+    // 1. First check for close-range enemies (no raycast needed)
+    for (const enemy of activeEnemies) {
+        // Calculate distance from player to enemy
+        const distanceToEnemy = player.position.distanceTo(enemy.position);
         
-        // Apply damage to the enemy (normal enemies take 2 hits to kill)
-        damageEnemy(enemy, knifeDamage);
+        // Enemy size data
+        const enemyWidth = enemy.geometry.parameters.width;
+        const enemyDepth = enemy.geometry.parameters.depth;
         
-        // Add hit effect
-        createHitEffect(intersects[0].point);
+        // Calculate effective collision radius
+        const enemyRadius = Math.max(enemyWidth, enemyDepth) / 2;
         
-        // Show hit indicator
-        showHitMarker();
+        // If enemy is within very close range (touch distance + knife length)
+        if (distanceToEnemy < (1.5 + enemyRadius)) {
+            // Check if player is facing the enemy (dot product)
+            const directionToEnemy = new THREE.Vector3()
+                .subVectors(enemy.position, player.position)
+                .normalize();
+            
+            // Calculate dot product (1 = same direction, -1 = opposite)
+            const dotProduct = cameraDirection.dot(directionToEnemy);
+            
+            // If player is somewhat facing the enemy (within a 120 degree cone)
+            if (dotProduct > 0.5) {
+                damageEnemy(enemy, knifeDamage);
+                createHitEffect(enemy.position);
+                showHitMarker();
+                hitEnemies.add(enemy.id);
+                
+                console.log("Close range hit! Distance:", distanceToEnemy);
+            }
+        }
     }
+    
+    // 2. Use raycasting for more distant enemies
+    // Create multiple raycasts in a small spread pattern
+    const rayCount = 5; // Number of rays to cast
+    const spreadAngle = Math.PI / 36; // 5 degrees spread
+    
+    // Create the main raycaster
+    const mainRaycaster = new THREE.Raycaster(cameraPosition, cameraDirection, 0, knifeReach);
+    
+    // Check the main raycast
+    const mainIntersects = mainRaycaster.intersectObjects(activeEnemies);
+    if (mainIntersects.length > 0) {
+        const enemy = mainIntersects[0].object;
+        if (!hitEnemies.has(enemy.id)) {
+            damageEnemy(enemy, knifeDamage);
+            createHitEffect(mainIntersects[0].point);
+            showHitMarker();
+            hitEnemies.add(enemy.id);
+            
+            console.log("Main ray hit! Distance:", mainIntersects[0].distance);
+        }
+    }
+    
+    // Create additional rays with slight spread
+    for (let i = 0; i < rayCount - 1; i++) {
+        // Calculate angle offset
+        const angle = spreadAngle * (i % 2 === 0 ? 1 : -1) * Math.ceil((i + 1) / 2);
+        
+        // Create rotated direction
+        const spreadDirection = cameraDirection.clone();
+        
+        // Rotate the direction around the Y axis
+        const rotationMatrix = new THREE.Matrix4().makeRotationY(angle);
+        spreadDirection.applyMatrix4(rotationMatrix);
+        
+        // Create raycaster with the new direction
+        const spreadRaycaster = new THREE.Raycaster(cameraPosition, spreadDirection, 0, knifeReach);
+        
+        // Check for intersections
+        const spreadIntersects = spreadRaycaster.intersectObjects(activeEnemies);
+        if (spreadIntersects.length > 0) {
+            const enemy = spreadIntersects[0].object;
+            if (!hitEnemies.has(enemy.id)) {
+                damageEnemy(enemy, knifeDamage);
+                createHitEffect(spreadIntersects[0].point);
+                showHitMarker();
+                hitEnemies.add(enemy.id);
+                
+                console.log("Spread ray hit! Angle:", angle, "Distance:", spreadIntersects[0].distance);
+            }
+        }
+    }
+    
+    return hitEnemies.size > 0; // Return true if any enemies were hit
 }
 
 // Function to create a hit effect at the impact point
