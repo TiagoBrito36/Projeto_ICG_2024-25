@@ -194,6 +194,10 @@ const roundConfigs = [
     }
 ];
 
+// Add these variables with your other global variables
+let infiniteHealthCheat = false;
+let originalHealthColor = null;
+
 // Update the initializeInventory function
 function initializeInventory() {
     const inventoryGrid = document.querySelector('.inventory-grid');
@@ -1577,11 +1581,11 @@ document.addEventListener('keyup', (e) => {
     if (e.code === 'Space') keys.space = false;
 }); // Added missing closing parenthesis here
 
-// Replace the existing animate function
+// Update the animate function to properly handle paused state
 function animate() {
     requestAnimationFrame(animate);
     
-    // FPS counter logic
+    // FPS counter logic - this can run regardless of pause state
     if (showFPS) {
         frameCount++;
         const currentTime = performance.now();
@@ -1607,16 +1611,17 @@ function animate() {
         menuCamera.lookAt(0, 0, 0);
         
         menuRenderer.render(menuScene, menuCamera);
-    } else if (gameStarted && !isPaused && !isGameOver) {
-        if (player) {
+    } else if (gameStarted) {
+        // Always render the scene, even when paused
+        renderer.render(scene, camera);
+        
+        // Only update game mechanics if not paused and not game over
+        if (!isPaused && !isGameOver && player) {
             updatePlayer();
             updateWeaponVisibility();
             updateEnemies();
-            
-            // Add bullet updates
             updateBullets();
         }
-        renderer.render(scene, camera);
     }
 }
 
@@ -2202,38 +2207,72 @@ function attackPlayer(enemy) {
     takeDamage(enemy.userData.damage);
 }
 
-// Function to apply damage to player
+// Function to toggle infinite health cheat
+function toggleInfiniteHealth() {
+    infiniteHealthCheat = !infiniteHealthCheat;
+    const status = infiniteHealthCheat ? "ACTIVATED" : "DEACTIVATED";
+    
+    // Store original health bar color if activating
+    if (infiniteHealthCheat && !originalHealthColor) {
+        const healthBar = document.getElementById('healthBar');
+        originalHealthColor = healthBar.style.backgroundColor;
+        // Change health bar to gold when cheat is active
+        healthBar.style.backgroundColor = '#ffcc00';
+        // Restore health to full
+        health = 100;
+        updateHUD();
+    } else if (!infiniteHealthCheat && originalHealthColor) {
+        // Restore original color when deactivating
+        const healthBar = document.getElementById('healthBar');
+        healthBar.style.backgroundColor = originalHealthColor;
+    }
+    
+    // Display fancy console message
+    console.log(`%c✨ INFINITE HEALTH ${status} ✨`, 
+                'background: #000; color: #ffcc00; font-size: 18px; padding: 5px; border-radius: 5px;');
+    
+    // Show in-game notification
+    showNotification(`God Mode: ${status}`, 3000);
+    
+    return infiniteHealthCheat;
+}
+
+// Update the takeDamage function to prevent damage while paused
 function takeDamage(amount) {
-    // First reduce shield if available
+    // Skip damage if game is paused or infinite health is enabled
+    if (isPaused || infiniteHealthCheat) {
+        return;
+    }
+    
+    // Regular damage handling continues unchanged
     if (shield > 0) {
         if (shield >= amount) {
             shield -= amount;
         } else {
-            // If damage exceeds shield, apply remaining to health
             const remainingDamage = amount - shield;
             shield = 0;
             health -= remainingDamage;
         }
     } else {
-        // No shield, reduce health directly
         health -= amount;
     }
     
-    // Ensure values don't go below 0
     shield = Math.max(0, shield);
     health = Math.max(0, health);
-    
-    // Update HUD
     updateHUD();
-    
-    // Track damage taken
     gameStats.damageTaken += amount;
     
-    // Check for player death
     if (health <= 0) {
         handlePlayerDeath();
     }
 }
+
+// Make the function globally available for console access
+window.toggleInfiniteHealth = toggleInfiniteHealth;
+
+// Add a hint in the console when the game starts
+console.log("%c🎮 CHEAT CODE AVAILABLE: Type toggleInfiniteHealth() in the console for God Mode", 
+           "background: #222; color: #ffcc00; font-size: 14px; padding: 5px; border-radius: 5px;");
 
 // Function to handle player taking damage to enemy
 function damageEnemy(enemy, damage) {
@@ -2714,6 +2753,30 @@ function showHitMarker() {
         hitMarker.classList.remove('show');
     }, 100);
 }
+
+// Replace the existing return button event listener for the victory screen
+document.getElementById('returnToMenuButton').addEventListener('click', () => {
+    // Hide victory screen
+    document.getElementById('victoryScreen').style.display = 'none';
+    
+    // Reset game state
+    resetGame();
+    document.getElementById('roundInfo').style.display = 'none';
+    
+    // Clean up UI elements
+    cleanupGameUI();
+    
+    // Show main menu and hide game scene
+    document.getElementById('menu').style.display = 'block';
+    document.getElementById('backgroundScene').style.display = 'block';
+    document.getElementById('gameScene').style.display = 'none';
+    
+    // Reset game started state
+    gameStarted = false;
+    
+    // Make sure cursor is visible
+    document.body.style.cursor = 'auto';
+});
 
 // Add an event listener for the return to menu button
 document.getElementById('returnToMenuButton').addEventListener('click', () => {
