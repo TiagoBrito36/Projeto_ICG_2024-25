@@ -375,14 +375,14 @@ function updateInventoryDisplay() {
     });
 }
 
-// Helper function to get item symbol
+// Update the getItemSymbol function to use the correct pistol emoji
 function getItemSymbol(itemType) {
     switch(itemType) {
-        case 0: return '🔪'; // Using a knife emoji for type 0
-        case 1: return '🛡️';
-        case 2: return '🔋';
-        case 3: return '🧪';
-        case 4: return '🔍';
+        case WEAPON_TYPES.KNIFE: return '🔪'; // Knife emoji
+        case WEAPON_TYPES.PISTOL: return '🔫'; // Gun emoji (changed from shield)
+        case 2: return '🔋'; // Energy
+        case 3: return '🧪'; // Potion
+        case 4: return '🔍'; // Special item
         default: return '?';
     }
 }
@@ -730,11 +730,11 @@ function updateWeaponVisibility() {
         pistolModel.visible = (inventory[selectedSlot] === WEAPON_TYPES.PISTOL);
     }
     
-    // Update ammo display if pistol is selected
-    if (inventory[selectedSlot] === WEAPON_TYPES.PISTOL) {
-        document.getElementById('ammoDisplay').style.display = 'block';
-    } else {
-        document.getElementById('ammoDisplay').style.display = 'none';
+    // Update ammo display container visibility
+    const ammoContainer = document.getElementById('ammoContainer');
+    if (ammoContainer) {
+        // Hide/show the container, not just the display
+        ammoContainer.style.display = (inventory[selectedSlot] === WEAPON_TYPES.PISTOL) ? 'block' : 'none';
     }
 }
 
@@ -986,7 +986,7 @@ function startGame() {
     
     // Create ammo display in HUD
     createAmmoDisplay();
-    updateAmmoDisplay();
+    createCrosshair(); // Add this line
     
     // Create weapon models
     setTimeout(() => {
@@ -1000,6 +1000,9 @@ function startGame() {
     // Update displays
     updateItemBar();
     initializeInventory();
+    
+    // Create crosshair
+    createCrosshair();
     
     gameStarted = true;
 
@@ -2709,4 +2712,47 @@ function updateAmmoDisplay() {
             ammoDisplay.style.color = '#ffffff';
         }
     }
+}
+
+// Improved crosshair function that attaches to the body instead of the HUD
+function createCrosshair() {
+    // Remove any existing crosshair first
+    const existingCrosshair = document.getElementById('crosshair');
+    if (existingCrosshair) {
+        existingCrosshair.remove();
+    }
+    
+    // Create new crosshair directly on the body element
+    const crosshair = document.createElement('div');
+    crosshair.id = 'crosshair';
+    
+    // Apply styling with !important to override any conflicting styles
+    crosshair.style.cssText = `
+        position: fixed !important;
+        top: 50% !important;
+        left: 50% !important;
+        transform: translate(-50%, -50%) !important;
+        width: 12px !important;
+        height: 12px !important;
+        border: 2px solid rgba(255, 255, 255, 0.7) !important;
+        border-radius: 50% !important;
+        pointer-events: none !important;
+        z-index: 10000 !important; /* Very high z-index to be above everything */
+    `;
+    
+    // Add a center dot
+    const centerDot = document.createElement('div');
+    centerDot.style.cssText = `
+        position: absolute !important;
+        top: 50% !important;
+        left: 50% !important;
+        transform: translate(-50%, -50%) !important;
+        width: 2px !important;
+        height: 2px !important;
+        background-color: white !important;
+        border-radius: 50% !important;
+    `;
+    
+    crosshair.appendChild(centerDot);
+    document.body.appendChild(crosshair); // Attach to body instead of HUD
 }
