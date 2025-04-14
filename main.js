@@ -86,6 +86,19 @@ const ENEMY_TYPES = {
     BOSS: 'boss'
 };
 
+// First, add weapon type constants at the top of your file
+const WEAPON_TYPES = {
+    KNIFE: 0,
+    PISTOL: 1
+};
+
+// Add pistol-related global variables
+let pistolModel = null;
+let pistolAmmo = 16;
+let pistolMaxAmmo = 16;
+let pistolReloading = false;
+let bullets = [];
+
 // Add the missing shuffleArray function
 function shuffleArray(array) {
     for (let i = array.length - 1; i > 0; i--) {
@@ -527,23 +540,26 @@ function selectSlot(slot) {
 
 // Update the useSelectedItem function to work regardless of movement state
 function useSelectedItem() {
-    // Get the currently selected item from inventory (don't check for knifeModel here)
     const item = inventory[selectedSlot];
     
-    if (item === 0) { // 0 is the knife/weapon item type
-        // Create knife model if it doesn't exist
+    if (item === WEAPON_TYPES.KNIFE) {
         if (!knifeModel) {
             createKnifeModel();
         }
         
-        // Ensure knife is visible before animating
         knifeModel.visible = true;
-        
-        // Play knife attack animation (should work even when moving)
         animateKnifeAttack();
-        console.log('Using knife');
-    } else if (item !== null) {
-        // Handle other item types by applying their effects
+        checkEnemyHit();
+    } 
+    else if (item === WEAPON_TYPES.PISTOL) {
+        if (!pistolModel) {
+            createPistolModel();
+        }
+        
+        pistolModel.visible = true;
+        firePistol();
+    }
+    else if (item !== null) {
         applyItemEffect(item);
     }
 }
@@ -696,14 +712,23 @@ function adjustKnifeRotation(x, y, z) {
 
 // Function to update weapon visibility based on selected item
 function updateWeaponVisibility() {
-    if (!knifeModel || !gameStarted) return;
+    if (!gameStarted) return;
     
-    if (inventory[selectedSlot] === 0) {
-        // Show knife when selected
-        knifeModel.visible = true;
+    // Handle knife visibility
+    if (knifeModel) {
+        knifeModel.visible = (inventory[selectedSlot] === WEAPON_TYPES.KNIFE);
+    }
+    
+    // Handle pistol visibility
+    if (pistolModel) {
+        pistolModel.visible = (inventory[selectedSlot] === WEAPON_TYPES.PISTOL);
+    }
+    
+    // Update ammo display if pistol is selected
+    if (inventory[selectedSlot] === WEAPON_TYPES.PISTOL) {
+        document.getElementById('ammoDisplay').style.display = 'block';
     } else {
-        // Hide knife when not selected
-        knifeModel.visible = false;
+        document.getElementById('ammoDisplay').style.display = 'none';
     }
 }
 
@@ -945,28 +970,281 @@ function startGame() {
     shield = 0;
     updateHUD();
     
-    // Initialize inventory and item bar with empty slots
-    inventory = [null, null, null, null, null];
+    // Add pistol to inventory alongside knife
+    inventory = [WEAPON_TYPES.KNIFE, WEAPON_TYPES.PISTOL, null, null, null];
     inventoryItems = Array(10).fill(null);
     
+    // Reset pistol ammo
+    pistolAmmo = pistolMaxAmmo;
+    pistolReloading = false;
+    
+    // Create ammo display in HUD
+    createAmmoDisplay();
+    updateAmmoDisplay();
+    
+    // Create weapon models
+    setTimeout(() => {
+        createKnifeModel();
+        createPistolModel();
+    }, 100);
+    
     // Initialize the knife as first item
-    inventory[0] = 0; // 0 is the knife/weapon item type
     selectedSlot = 0; // Select the knife by default
     
     // Update displays
     updateItemBar();
     initializeInventory();
     
-    // Create the knife model AFTER camera is properly set up
-    setTimeout(() => {
-        createKnifeModel();
-        console.log("Knife model creation triggered");
-    }, 100);
-    
     gameStarted = true;
 
     // Start the rounds
     startRounds();
+}
+
+// Function to create pistol model
+function createPistolModel() {
+    if (pistolModel) {
+        camera.remove(pistolModel);
+    }
+    
+    // Create pistol body
+    const pistolBody = new THREE.BoxGeometry(0.1, 0.15, 0.3);
+    const pistolMaterial = new THREE.MeshStandardMaterial({
+        color: 0x333333,
+        roughness: 0.3,
+        metalness: 0.8
+    });
+    const body = new THREE.Mesh(pistolBody, pistolMaterial);
+    
+    // Create pistol handle
+    const handleGeometry = new THREE.BoxGeometry(0.08, 0.25, 0.1);
+    const handleMaterial = new THREE.MeshStandardMaterial({
+        color: 0x222222,
+        roughness: 0.5,
+        metalness: 0.3
+    });
+    const handle = new THREE.Mesh(handleGeometry, handleMaterial);
+    handle.position.set(0, -0.2, 0.05);
+    
+    // Create barrel
+    const barrelGeometry = new THREE.CylinderGeometry(0.03, 0.03, 0.3, 16);
+    const barrelMaterial = new THREE.MeshStandardMaterial({
+        color: 0x444444,
+        roughness: 0.2,
+        metalness: 0.9
+    });
+    const barrel = new THREE.Mesh(barrelGeometry, barrelMaterial);
+    barrel.rotation.x = Math.PI / 2;
+    barrel.position.set(0, 0.05, 0.25);
+    
+    // Create pistol group
+    pistolModel = new THREE.Group();
+    pistolModel.add(body);
+    pistolModel.add(handle);
+    pistolModel.add(barrel);
+    
+    // Position the pistol in view
+    pistolModel.position.set(0.3, -0.3, -0.5);
+    pistolModel.rotation.set(0, Math.PI, 0);
+    
+    // Add a dedicated light
+    const pistolLight = new THREE.PointLight(0xffffff, 1.5, 1);
+    pistolLight.position.set(0, 0, -0.2);
+    pistolModel.add(pistolLight);
+    
+    camera.add(pistolModel);
+    console.log("Pistol model created");
+    
+    pistolModel.visible = (inventory[selectedSlot] === WEAPON_TYPES.PISTOL);
+    return pistolModel;
+}
+
+// Pistol firing animation
+function animatePistolFire() {
+    if (!pistolModel || pistolReloading) return;
+    
+    // Store original position
+    const originalPosition = pistolModel.position.clone();
+    const originalRotation = pistolModel.rotation.clone();
+    
+    // Animation constants
+    const recoilDuration = 100; // milliseconds
+    const returnDuration = 150; // milliseconds
+    
+    // Start time
+    const startTime = performance.now();
+    
+    function animate() {
+        const now = performance.now();
+        const elapsed = now - startTime;
+        
+        if (elapsed < recoilDuration) {
+            // Recoil motion
+            const progress = elapsed / recoilDuration;
+            pistolModel.position.z = originalPosition.z + (0.1 * progress);
+            pistolModel.position.y = originalPosition.y + (0.03 * progress);
+            pistolModel.rotation.x = originalRotation.x - (Math.PI / 36 * progress);
+            requestAnimationFrame(animate);
+        } else if (elapsed < recoilDuration + returnDuration) {
+            // Return motion
+            const returnProgress = (elapsed - recoilDuration) / returnDuration;
+            pistolModel.position.z = originalPosition.z + (0.1 * (1 - returnProgress));
+            pistolModel.position.y = originalPosition.y + (0.03 * (1 - returnProgress));
+            pistolModel.rotation.x = originalRotation.x - (Math.PI / 36 * (1 - returnProgress));
+            requestAnimationFrame(animate);
+        } else {
+            // Reset position
+            pistolModel.position.copy(originalPosition);
+            pistolModel.rotation.copy(originalRotation);
+        }
+    }
+    
+    animate();
+}
+
+// Pistol reload animation
+function animatePistolReload() {
+    if (!pistolModel || pistolReloading) return;
+    
+    pistolReloading = true;
+    showNotification("Reloading...", 1000);
+    
+    // Store original position
+    const originalPosition = pistolModel.position.clone();
+    const originalRotation = pistolModel.rotation.clone();
+    
+    // Animation constants
+    const totalDuration = 1000; // 1 second reload time
+    const startTime = performance.now();
+    
+    function animate() {
+        const now = performance.now();
+        const elapsed = now - startTime;
+        
+        if (elapsed < totalDuration) {
+            const progress = elapsed / totalDuration;
+            
+            // Drop and rotate animation
+            pistolModel.position.y = originalPosition.y - (0.2 * Math.sin(progress * Math.PI));
+            pistolModel.rotation.z = originalRotation.z + (Math.PI / 4 * Math.sin(progress * Math.PI));
+            
+            requestAnimationFrame(animate);
+        } else {
+            // Reset position
+            pistolModel.position.copy(originalPosition);
+            pistolModel.rotation.copy(originalRotation);
+            
+            // Reload complete
+            pistolAmmo = pistolMaxAmmo;
+            pistolReloading = false;
+            updateAmmoDisplay();
+        }
+    }
+    
+    animate();
+}
+
+// Fire pistol
+function firePistol() {
+    if (pistolReloading) return;
+    
+    if (pistolAmmo <= 0) {
+        // Auto reload when empty
+        animatePistolReload();
+        return;
+    }
+    
+    // Decrement ammo
+    pistolAmmo--;
+    updateAmmoDisplay();
+    
+    // Play firing animation
+    animatePistolFire();
+    
+    // Create bullet
+    createBullet();
+    
+    // Auto reload when empty
+    if (pistolAmmo === 0) {
+        setTimeout(animatePistolReload, 300);
+    }
+}
+
+// Create and fire a bullet
+function createBullet() {
+    // Create bullet geometry
+    const bulletGeometry = new THREE.CylinderGeometry(0.02, 0.02, 0.08, 8);
+    const bulletMaterial = new THREE.MeshBasicMaterial({ color: 0xffff00 });
+    const bullet = new THREE.Mesh(bulletGeometry, bulletMaterial);
+    
+    // Get camera position and direction
+    const cameraPosition = new THREE.Vector3();
+    camera.getWorldPosition(cameraPosition);
+    
+    const cameraDirection = new THREE.Vector3(0, 0, -1);
+    camera.getWorldDirection(cameraDirection);
+    
+    // Position bullet at gun barrel
+    bullet.position.copy(cameraPosition).addScaledVector(cameraDirection, 0.6);
+    
+    // Orient bullet
+    bullet.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), cameraDirection);
+    
+    // Add bullet data
+    bullet.userData = {
+        direction: cameraDirection.clone(),
+        speed: 2.0,
+        damage: 20, // Takes 2 hits to kill normal enemy
+        lifetime: 1000,
+        spawnTime: performance.now()
+    };
+    
+    scene.add(bullet);
+    bullets.push(bullet);
+    
+    return bullet;
+}
+
+// Update bullets
+function updateBullets() {
+    const now = performance.now();
+    
+    for (let i = bullets.length - 1; i >= 0; i--) {
+        const bullet = bullets[i];
+        
+        // Move bullet
+        bullet.position.addScaledVector(bullet.userData.direction, bullet.userData.speed);
+        
+        // Check lifetime
+        if (now - bullet.userData.spawnTime > bullet.userData.lifetime) {
+            scene.remove(bullet);
+            bullets.splice(i, 1);
+            continue;
+        }
+        
+        // Check enemy hits
+        for (let j = 0; j < activeEnemies.length; j++) {
+            const enemy = activeEnemies[j];
+            const distance = bullet.position.distanceTo(enemy.position);
+            
+            // If hit
+            if (distance < enemy.geometry.parameters.width / 2 + 0.1) {
+                // Apply damage
+                damageEnemy(enemy, bullet.userData.damage);
+                
+                // Create hit effect
+                createHitEffect(bullet.position);
+                
+                // Show hit marker
+                showHitMarker();
+                
+                // Remove bullet
+                scene.remove(bullet);
+                bullets.splice(i, 1);
+                break;
+            }
+        }
+    }
 }
 
 // Initialize menu scene first
@@ -1066,6 +1344,13 @@ document.addEventListener('keydown', (event) => {
             document.getElementById('pauseMenu').style.display = 'none';
             // Show HUD elements when unpaused
             document.getElementById('hud').style.display = 'flex';
+        }
+    }
+    
+    // Add reload with R key
+    if (event.code === 'KeyR' && gameStarted && !isPaused) {
+        if (inventory[selectedSlot] === WEAPON_TYPES.PISTOL && pistolAmmo < pistolMaxAmmo && !pistolReloading) {
+            animatePistolReload();
         }
     }
 });
@@ -1289,13 +1574,14 @@ function animate() {
         menuCamera.lookAt(0, 0, 0);
         
         menuRenderer.render(menuScene, menuCamera);
-    } else if (!isPaused && !isGameOver) {
+    } else if (gameStarted && !isPaused && !isGameOver) {
         if (player) {
             updatePlayer();
             updateWeaponVisibility();
-            
-            // Add this line to update enemies
             updateEnemies();
+            
+            // Add bullet updates
+            updateBullets();
         }
         renderer.render(scene, camera);
     }
@@ -2025,9 +2311,6 @@ function createEnemyDefeatAnimation(enemy) {
             particle.position.y += particle.userData.velocity.y;
             particle.position.z += particle.userData.velocity.z;
             
-            // Apply gravity
-            particle.userData.velocity.y -= particle.userData.gravity;
-            
             // Fade out
             const progress = elapsed / particle.userData.lifetime;
             particle.material.opacity = 0.8 * (1 - progress);
@@ -2362,3 +2645,42 @@ document.getElementById('returnToMenuButton').addEventListener('click', () => {
     document.getElementById('roundInfo').style.display = 'none';
     document.getElementById('menu').style.display = 'block';
 });
+
+// Add this to your HTML
+function createAmmoDisplay() {
+    const hud = document.getElementById('hud');
+    
+    const ammoContainer = document.createElement('div');
+    ammoContainer.id = 'ammoContainer';
+    ammoContainer.style.position = 'absolute';
+    ammoContainer.style.bottom = '20px';
+    ammoContainer.style.right = '20px';
+    ammoContainer.style.backgroundColor = 'rgba(0, 0, 0, 0.5)';
+    ammoContainer.style.padding = '10px';
+    ammoContainer.style.borderRadius = '5px';
+    
+    const ammoDisplay = document.createElement('div');
+    ammoDisplay.id = 'ammoDisplay';
+    ammoDisplay.style.color = 'white';
+    ammoDisplay.style.fontSize = '24px';
+    ammoDisplay.style.fontWeight = 'bold';
+    ammoDisplay.textContent = `${pistolAmmo}/${pistolMaxAmmo}`;
+    
+    ammoContainer.appendChild(ammoDisplay);
+    hud.appendChild(ammoContainer);
+}
+
+// Update ammo display
+function updateAmmoDisplay() {
+    const ammoDisplay = document.getElementById('ammoDisplay');
+    if (ammoDisplay) {
+        ammoDisplay.textContent = `${pistolAmmo}/${pistolMaxAmmo}`;
+        
+        // Red when low on ammo
+        if (pistolAmmo <= 3) {
+            ammoDisplay.style.color = '#ff0000';
+        } else {
+            ammoDisplay.style.color = '#ffffff';
+        }
+    }
+}
