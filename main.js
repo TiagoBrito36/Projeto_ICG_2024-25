@@ -124,39 +124,39 @@ const enemyConfigs = {
         color: 0xff0000,
         attackRange: 2,
         attackCooldown: 1000,
-        spawnDelay: 300 // Reduced from 500
+        spawnDelay: 500 // Reduced from 500
     },
     [ENEMY_TYPES.TANK]: {
         health: 150,
         speed: 0.025,
         damage: 25,
-        size: { width: 1.5, height: 2.2, depth: 1.5 },
+        size: { width: 1.6, height: 3.6, depth: 1.6 },
         color: 0x990000,
         attackRange: 2.5,
         attackCooldown: 2000,
-        spawnDelay: 600 // Reduced from 1500
+        spawnDelay: 1500 // Reduced from 1500
     },
     [ENEMY_TYPES.RANGED]: {
         health: 60,
         speed: 0.05,
         damage: 10,
-        size: { width: 0.8, height: 2.3, depth: 0.8 },
+        size: { width: 0.8, height: 3.6, depth: 0.8 },
         color: 0xff6600,
         attackRange: 15,
         attackCooldown: 2000,
         projectileSpeed: 0.3,
-        spawnDelay: 400 // Reduced from 1000
+        spawnDelay: 1000 // Reduced from 1000
     },
     [ENEMY_TYPES.BOSS]: {
         health: 500,
         speed: 0.04,
         damage: 30,
-        size: { width: 2.5, height: 3, depth: 2.5 },
+        size: { width: 2.5, height: 4, depth: 2.5 },
         color: 0x660066,
         attackRange: 3,
         attackCooldown: 3000,
         specialAttackCooldown: 10000,
-        spawnDelay: 1000 // Reduced from 3000
+        spawnDelay: 3000 // Reduced from 3000
     }
 };
 
@@ -338,18 +338,20 @@ function toggleInventory() {
     isInventoryOpen = !isInventoryOpen;
     document.getElementById('inventory').style.display = isInventoryOpen ? 'block' : 'none';
     
-    // If opening inventory, pause game mechanics but not the whole game
+    // If opening inventory, pause game mechanics and hide crosshair
     if (isInventoryOpen) {
         document.exitPointerLock();
+        hideCrosshair(); // Hide crosshair when inventory is open
         // Initialize drag-drop if needed
         setupItemBarDragAndDrop();
     } else {
-        // If closing, clear selection
+        // If closing, clear selection and show crosshair
         selectedInventorySlot = -1;
         document.querySelectorAll('.inventory-slot').forEach(slot => {
             slot.classList.remove('selected');
         });
         
+        showCrosshair(); // Show crosshair when inventory is closed
         document.body.requestPointerLock();
     }
     
@@ -1369,10 +1371,12 @@ document.addEventListener('keydown', (event) => {
             document.getElementById('pauseMenu').style.display = 'block';
             // Hide HUD elements when paused
             document.getElementById('hud').style.display = 'none';
+            hideCrosshair(); // Hide crosshair when paused
         } else {
             document.getElementById('pauseMenu').style.display = 'none';
             // Show HUD elements when unpaused
             document.getElementById('hud').style.display = 'flex';
+            showCrosshair(); // Show crosshair when unpaused
         }
     }
     
@@ -1629,6 +1633,7 @@ document.getElementById('resumeButton').addEventListener('click', () => {
     document.getElementById('pauseMenu').style.display = 'none';
     // Show HUD elements when resuming
     document.getElementById('hud').style.display = 'flex';
+    showCrosshair(); // Show crosshair when resuming
     document.body.requestPointerLock();
 });
 
@@ -1652,6 +1657,9 @@ document.getElementById('returnToMainButton').addEventListener('click', () => {
     // Hide game elements
     document.getElementById('pauseMenu').style.display = 'none';
     document.getElementById('gameScene').style.display = 'none';
+    
+    // Clean up UI elements
+    cleanupGameUI();
     
     // Show menu elements
     document.getElementById('menu').style.display = 'block';
@@ -2408,7 +2416,7 @@ function showNotification(message, duration = 3000) {
     }, duration);
 }
 
-// Direct implementation of game over screen with a 2.5 second delay
+// Updated handlePlayerDeath function to hide crosshair
 function handlePlayerDeath() {
     isGameOver = true;
     
@@ -2417,8 +2425,9 @@ function handlePlayerDeath() {
         document.exitPointerLock();
     }
     
-    // Hide HUD elements
+    // Hide HUD elements and crosshair
     document.getElementById('hud').style.display = 'none';
+    hideCrosshair(); // Add this line to hide crosshair
     
     // Show game over message
     showNotification("You have been defeated!", 2500);
@@ -2437,8 +2446,8 @@ function handlePlayerDeath() {
         gameOverScreen.style.display = 'flex';
         gameOverScreen.style.justifyContent = 'center';
         gameOverScreen.style.alignItems = 'center';
-        gameOverScreen.style.zIndex = '2000'; // Increased z-index
-        gameOverScreen.style.pointerEvents = 'auto'; // Ensure mouse events work
+        gameOverScreen.style.zIndex = '2000';
+        gameOverScreen.style.pointerEvents = 'auto';
         
         // Inner container
         gameOverScreen.innerHTML = `
@@ -2462,6 +2471,9 @@ function handlePlayerDeath() {
             resetGame();
             document.getElementById('roundInfo').style.display = 'none';
             
+            // Clean up UI elements
+            cleanupGameUI();
+            
             // Show main menu
             document.getElementById('menu').style.display = 'block';
             document.getElementById('backgroundScene').style.display = 'block';
@@ -2470,7 +2482,7 @@ function handlePlayerDeath() {
             // Reset game started state
             gameStarted = false;
         });
-    }, 2500); // 2.5 second delay
+    }, 2500);
 }
 
 // Function to show victory screen
@@ -2490,6 +2502,21 @@ function showVictoryScreen() {
     document.exitPointerLock();
 }
 
+// Add this function to properly remove UI elements when returning to menu
+function cleanupGameUI() {
+    // Remove crosshair
+    const crosshair = document.getElementById('crosshair');
+    if (crosshair) {
+        crosshair.remove();
+    }
+    
+    // Remove ammo display
+    const ammoContainer = document.getElementById('ammoContainer');
+    if (ammoContainer) {
+        ammoContainer.remove();
+    }
+}
+
 // Function to reset game state
 function resetGame() {
     // Clean up enemies
@@ -2502,16 +2529,29 @@ function resetGame() {
         scene.remove(projectile);
     }
     
+    // Clean up bullets
+    for (const bullet of bullets) {
+        scene.remove(bullet);
+    }
+    bullets = [];
+    
     // Remove player from scene if it exists
     if (player) {
-        // Make sure to remove knife model from camera first to prevent memory leaks
+        // Make sure to remove weapon models from camera first to prevent memory leaks
         if (knifeModel) {
             camera.remove(knifeModel);
             knifeModel = null;
         }
+        if (pistolModel) {
+            camera.remove(pistolModel);
+            pistolModel = null;
+        }
         scene.remove(player);
         player = null; // Clear the reference so a new player can be created
     }
+    
+    // Clean up UI elements
+    cleanupGameUI();
     
     // Reset game state
     enemies = [];
@@ -2524,6 +2564,10 @@ function resetGame() {
     // Reset player stats
     health = 100;
     shield = 0;
+    
+    // Reset weapon stats
+    pistolAmmo = pistolMaxAmmo;
+    pistolReloading = false;
 }
 
 // Function to check if knife hit an enemy
@@ -2627,7 +2671,7 @@ function createHitEffect(position) {
     animateHitParticles();
 }
 
-// Function to show hit marker
+// Updated showHitMarker function to remove check mark
 function showHitMarker() {
     // Create hit marker if it doesn't exist
     let hitMarker = document.getElementById('hitMarker');
@@ -2644,8 +2688,10 @@ function showHitMarker() {
                 top: 50%;
                 left: 50%;
                 transform: translate(-50%, -50%);
-                color: #ff0000;
-                font-size: 24px;
+                width: 16px;
+                height: 16px;
+                border: 2px solid #ff3333;
+                border-radius: 50%;
                 opacity: 0;
                 transition: opacity 0.1s;
                 z-index: 1000;
@@ -2657,7 +2703,9 @@ function showHitMarker() {
             }
         `;
         document.head.appendChild(style);
-        hitMarker.textContent = '✓';
+        
+        // Remove the check mark text entirely
+        hitMarker.textContent = '';
     }
     
     // Show hit marker briefly
@@ -2672,12 +2720,19 @@ document.getElementById('returnToMenuButton').addEventListener('click', () => {
     document.getElementById('victoryScreen').style.display = 'none';
     resetGame();
     document.getElementById('roundInfo').style.display = 'none';
+    cleanupGameUI();
     document.getElementById('menu').style.display = 'block';
 });
 
 // Add this to your HTML
 function createAmmoDisplay() {
     const hud = document.getElementById('hud');
+    
+    // Remove any existing ammo display
+    const existingAmmoContainer = document.getElementById('ammoContainer');
+    if (existingAmmoContainer) {
+        existingAmmoContainer.remove();
+    }
     
     const ammoContainer = document.createElement('div');
     ammoContainer.id = 'ammoContainer';
@@ -2697,6 +2752,9 @@ function createAmmoDisplay() {
     
     ammoContainer.appendChild(ammoDisplay);
     hud.appendChild(ammoContainer);
+    
+    // Set initial visibility based on selected weapon
+    ammoContainer.style.display = (inventory[selectedSlot] === WEAPON_TYPES.PISTOL) ? 'block' : 'none';
 }
 
 // Update ammo display
@@ -2755,4 +2813,19 @@ function createCrosshair() {
     
     crosshair.appendChild(centerDot);
     document.body.appendChild(crosshair); // Attach to body instead of HUD
+}
+
+// Add these functions to control crosshair visibility
+function showCrosshair() {
+    const crosshair = document.getElementById('crosshair');
+    if (crosshair) {
+        crosshair.style.display = 'block';
+    }
+}
+
+function hideCrosshair() {
+    const crosshair = document.getElementById('crosshair');
+    if (crosshair) {
+        crosshair.style.display = 'none';
+    }
 }
