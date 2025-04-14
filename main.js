@@ -99,6 +99,12 @@ let pistolMaxAmmo = 16;
 let pistolReloading = false;
 let bullets = [];
 
+// Add these pistol position globals at the top with your other variables
+const PISTOL_IDLE_POSITION = new THREE.Vector3(0.3, -0.3, -0.5);
+const PISTOL_IDLE_ROTATION = new THREE.Euler(0, Math.PI, 0);
+let pistolAnimationInProgress = false;
+let pistolAnimationId = null;
+
 // Add the missing shuffleArray function
 function shuffleArray(array) {
     for (let i = array.length - 1; i > 0; i--) {
@@ -1043,9 +1049,9 @@ function createPistolModel() {
     pistolModel.add(handle);
     pistolModel.add(barrel);
     
-    // Position the pistol in view
-    pistolModel.position.set(0.3, -0.3, -0.5);
-    pistolModel.rotation.set(0, Math.PI, 0);
+    // Position the pistol in view using the constants
+    pistolModel.position.copy(PISTOL_IDLE_POSITION);
+    pistolModel.rotation.copy(PISTOL_IDLE_ROTATION);
     
     // Add a dedicated light
     const pistolLight = new THREE.PointLight(0xffffff, 1.5, 1);
@@ -1059,13 +1065,20 @@ function createPistolModel() {
     return pistolModel;
 }
 
-// Pistol firing animation
+// Improved pistol firing animation with forced reset
 function animatePistolFire() {
     if (!pistolModel || pistolReloading) return;
     
-    // Store original position
-    const originalPosition = pistolModel.position.clone();
-    const originalRotation = pistolModel.rotation.clone();
+    // Force cancel any ongoing animation to prevent conflicts
+    if (pistolAnimationInProgress) {
+        cancelAnimationFrame(pistolAnimationId);
+        // Reset position immediately
+        pistolModel.position.copy(PISTOL_IDLE_POSITION);
+        pistolModel.rotation.copy(PISTOL_IDLE_ROTATION);
+    }
+    
+    // Mark animation as in progress
+    pistolAnimationInProgress = true;
     
     // Animation constants
     const recoilDuration = 100; // milliseconds
@@ -1081,37 +1094,46 @@ function animatePistolFire() {
         if (elapsed < recoilDuration) {
             // Recoil motion
             const progress = elapsed / recoilDuration;
-            pistolModel.position.z = originalPosition.z + (0.1 * progress);
-            pistolModel.position.y = originalPosition.y + (0.03 * progress);
-            pistolModel.rotation.x = originalRotation.x - (Math.PI / 36 * progress);
-            requestAnimationFrame(animate);
+            pistolModel.position.z = PISTOL_IDLE_POSITION.z + (0.1 * progress);
+            pistolModel.position.y = PISTOL_IDLE_POSITION.y + (0.03 * progress);
+            pistolModel.rotation.x = PISTOL_IDLE_ROTATION.x - (Math.PI / 36 * progress);
+            pistolAnimationId = requestAnimationFrame(animate);
         } else if (elapsed < recoilDuration + returnDuration) {
             // Return motion
             const returnProgress = (elapsed - recoilDuration) / returnDuration;
-            pistolModel.position.z = originalPosition.z + (0.1 * (1 - returnProgress));
-            pistolModel.position.y = originalPosition.y + (0.03 * (1 - returnProgress));
-            pistolModel.rotation.x = originalRotation.x - (Math.PI / 36 * (1 - returnProgress));
-            requestAnimationFrame(animate);
+            pistolModel.position.z = PISTOL_IDLE_POSITION.z + (0.1 * (1 - returnProgress));
+            pistolModel.position.y = PISTOL_IDLE_POSITION.y + (0.03 * (1 - returnProgress));
+            pistolModel.rotation.x = PISTOL_IDLE_ROTATION.x - (Math.PI / 36 * (1 - returnProgress));
+            pistolAnimationId = requestAnimationFrame(animate);
         } else {
-            // Reset position
-            pistolModel.position.copy(originalPosition);
-            pistolModel.rotation.copy(originalRotation);
+            // CRITICAL: Reset to exact original values
+            pistolModel.position.copy(PISTOL_IDLE_POSITION);
+            pistolModel.rotation.copy(PISTOL_IDLE_ROTATION);
+            
+            // Clear animation state
+            pistolAnimationInProgress = false;
+            pistolAnimationId = null;
         }
     }
     
-    animate();
+    pistolAnimationId = requestAnimationFrame(animate);
 }
 
-// Pistol reload animation
+// Improved pistol reload animation with forced reset
 function animatePistolReload() {
     if (!pistolModel || pistolReloading) return;
     
-    pistolReloading = true;
-    showNotification("Reloading...", 1000);
+    // Force cancel any ongoing animation to prevent conflicts
+    if (pistolAnimationInProgress) {
+        cancelAnimationFrame(pistolAnimationId);
+        // Reset position immediately
+        pistolModel.position.copy(PISTOL_IDLE_POSITION);
+        pistolModel.rotation.copy(PISTOL_IDLE_ROTATION);
+    }
     
-    // Store original position
-    const originalPosition = pistolModel.position.clone();
-    const originalRotation = pistolModel.rotation.clone();
+    pistolReloading = true;
+    pistolAnimationInProgress = true;
+    showNotification("Reloading...", 1000);
     
     // Animation constants
     const totalDuration = 1000; // 1 second reload time
@@ -1125,23 +1147,27 @@ function animatePistolReload() {
             const progress = elapsed / totalDuration;
             
             // Drop and rotate animation
-            pistolModel.position.y = originalPosition.y - (0.2 * Math.sin(progress * Math.PI));
-            pistolModel.rotation.z = originalRotation.z + (Math.PI / 4 * Math.sin(progress * Math.PI));
+            pistolModel.position.y = PISTOL_IDLE_POSITION.y - (0.2 * Math.sin(progress * Math.PI));
+            pistolModel.rotation.z = PISTOL_IDLE_ROTATION.z + (Math.PI / 4 * Math.sin(progress * Math.PI));
             
-            requestAnimationFrame(animate);
+            pistolAnimationId = requestAnimationFrame(animate);
         } else {
-            // Reset position
-            pistolModel.position.copy(originalPosition);
-            pistolModel.rotation.copy(originalRotation);
+            // CRITICAL: Reset to exact original values
+            pistolModel.position.copy(PISTOL_IDLE_POSITION);
+            pistolModel.rotation.copy(PISTOL_IDLE_ROTATION);
             
             // Reload complete
             pistolAmmo = pistolMaxAmmo;
             pistolReloading = false;
             updateAmmoDisplay();
+            
+            // Clear animation state
+            pistolAnimationInProgress = false;
+            pistolAnimationId = null;
         }
     }
     
-    animate();
+    pistolAnimationId = requestAnimationFrame(animate);
 }
 
 // Fire pistol
