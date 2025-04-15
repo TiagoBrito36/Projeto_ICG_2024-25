@@ -2964,3 +2964,107 @@ function hideCrosshair() {
         crosshair.style.display = 'none';
     }
 }
+
+// Função de splash screen modificada
+function createSplashScreen() {
+    // Criar o div da tela de carregamento
+    const splashScreen = document.createElement('div');
+    splashScreen.id = 'splashScreen';
+    splashScreen.style.cssText = `
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: url('assets/images/background.png') center center no-repeat;
+        background-size: cover;
+        z-index: 10000;
+        display: flex;
+        flex-direction: column;
+        justify-content: flex-start;
+        align-items: center;
+        padding-top: 120px;
+    `;
+    
+    // Criar o container da barra de progresso
+    const progressContainer = document.createElement('div');
+    progressContainer.style.cssText = `
+        width: 40%;
+        height: 25px;
+        background-color: rgba(0, 0, 0, 0.5);
+        border-radius: 15px;
+        overflow: hidden;
+        border: 2px solid #ffffff;
+        margin-bottom: 15px;
+    `;
+    
+    // Criar a barra de progresso
+    const progressBar = document.createElement('div');
+    progressBar.id = 'loadingBar';
+    progressBar.style.cssText = `
+        width: 0%;
+        height: 100%;
+        background-color: #aa0000;
+        transition: width 0.5s;
+    `;
+    
+    // Criar o texto de carregamento
+    const loadingText = document.createElement('div');
+    loadingText.id = 'loadingText';
+    loadingText.style.cssText = `
+        color: #ffffff;
+        font-size: 18px;
+        text-shadow: 1px 1px 2px #000000;
+    `;
+    loadingText.textContent = "Loading... 0%";
+    
+    // Montar a estrutura
+    progressContainer.appendChild(progressBar);
+    splashScreen.appendChild(progressContainer);
+    splashScreen.appendChild(loadingText);
+    
+    document.body.appendChild(splashScreen);
+    
+    return { splashScreen, progressBar, loadingText };
+}
+
+// Função para simular o carregamento
+function simulateLoading() {
+    // Esconder todos os outros elementos primeiro
+    document.getElementById('menu').style.display = 'none';
+    document.getElementById('backgroundScene').style.display = 'none';
+    document.getElementById('gameScene').style.display = 'none';
+    
+    // Criar e mostrar a tela de carregamento
+    const { splashScreen, progressBar, loadingText } = createSplashScreen();
+    
+    // Simular o progresso de carregamento
+    let progress = 0;
+    const loadingInterval = setInterval(() => {
+        progress += Math.random() * 5 + 2; // Valor aleatório entre 2-7% por vez
+        if (progress >= 100) {
+            progress = 100;
+            clearInterval(loadingInterval);
+            
+            // Esperar mais 500ms antes de mostrar o menu principal
+            setTimeout(() => {
+                // Remover a tela de carregamento
+                document.body.removeChild(splashScreen);
+                
+                // Mostrar o menu principal
+                document.getElementById('menu').style.display = 'block';
+                document.getElementById('backgroundScene').style.display = 'block';
+            }, 500);
+        }
+        
+        // Atualizar a barra de progresso
+        progressBar.style.width = `${progress}%`;
+        loadingText.textContent = `Loading... ${Math.floor(progress)}%`;
+    }, 200); // Atualizar a cada 200ms
+}
+
+// Iniciar a simulação de carregamento quando a página carrega
+window.addEventListener('DOMContentLoaded', () => {
+    // Iniciar a simulação de carregamento
+    simulateLoading();
+});
