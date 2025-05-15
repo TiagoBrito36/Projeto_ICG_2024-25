@@ -2527,7 +2527,12 @@ function handlePlayerDeath() {
 // Function to show victory screen
 function showVictoryScreen() {
     isGameOver = true;
+        
+    // Hide crosshair when showing victory screen
+    hideCrosshair();
     
+    // Hide HUD elements
+    document.getElementById('hud').style.display = 'none';    
     // Update statistics on victory screen
     document.getElementById('damageDealt').textContent = `Damage Dealt: ${gameStats.damageDealt}`;
     document.getElementById('damageTaken').textContent = `Damage Taken: ${gameStats.damageTaken}`;
@@ -3068,3 +3073,72 @@ window.addEventListener('DOMContentLoaded', () => {
     // Iniciar a simulação de carregamento
     simulateLoading();
 });
+
+// Function to jump to a specific round
+function jumpToRound(roundNumber) {
+    // Validate input
+    if (typeof roundNumber !== 'number' || roundNumber < 1 || roundNumber > totalRounds) {
+        console.log(`Invalid round number. Please enter a number between 1 and ${totalRounds}.`);
+        return false;
+    }
+    
+    // Must have a game in progress
+    if (!gameStarted) {
+        console.log('Cannot jump rounds - game not started.');
+        return false;
+    }
+    
+    // Clean up existing round state
+    isRoundActive = false;
+    
+    // Clean up existing enemies
+    for (let i = activeEnemies.length - 1; i >= 0; i--) {
+        const enemy = activeEnemies[i];
+        scene.remove(enemy);
+    }
+    
+    // Clear enemy arrays
+    enemies = [];
+    activeEnemies = [];
+    
+    // Clear projectiles
+    for (const projectile of projectiles) {
+        scene.remove(projectile);
+    }
+    projectiles.length = 0;
+    
+    // Clear bullets
+    for (const bullet of bullets) {
+        scene.remove(bullet);
+    }
+    bullets = [];
+    
+    // Set current round
+    currentRound = roundNumber - 1; // Subtract 1 because startNextRound increments it
+    
+    // Show notification
+    showNotification(`CHEAT ACTIVATED: Jumping to Round ${roundNumber}`, 3000);
+    
+    console.log(`%c🎮 JUMPING TO ROUND ${roundNumber}`, 
+            'background: #222; color: #ffcc00; font-size: 14px; padding: 5px; border-radius: 5px;');
+    
+    // Stop any existing countdown
+    if (countdownInterval) {
+        clearInterval(countdownInterval);
+    }
+    
+    // Hide countdown display
+    document.getElementById('countdown').style.display = 'none';
+    
+    // Start the new round
+    startNextRound();
+    
+    return true;
+}
+
+// Make the function available in the console
+window.jumpToRound = jumpToRound;
+
+// Add a hint in the console when the game starts
+console.log("%c🎮 CHEAT CODE AVAILABLE: Type jumpToRound(number) to skip to a specific round", 
+           "background: #222; color: #ffcc00; font-size: 14px; padding: 5px; border-radius: 5px;");
