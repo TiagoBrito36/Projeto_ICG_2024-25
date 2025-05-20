@@ -475,3 +475,135 @@ canvas {
     background-color: #ff9900;
     transform: scale(1.05);
 }
+
+/* Shop styles */
+#shop {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background-color: rgba(0, 0, 0, 0.8);
+    border: 2px solid #4a2f2f;
+    border-radius: 10px;
+    width: 400px;
+    z-index: 200;
+    color: white;
+    padding: 15px;
+}
+
+.shop-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 15px;
+    border-bottom: 1px solid #4a2f2f;
+    padding-bottom: 10px;
+}
+
+.shop-header h3 {
+    margin: 0;
+}
+
+.shop-header button {
+    background: none;
+    border: none;
+    color: white;
+    font-size: 24px;
+    cursor: pointer;
+}
+
+.player-coins {
+    display: flex;
+    align-items: center;
+    background-color: rgba(0, 0, 0, 0.5);
+    padding: 8px 12px;
+    border-radius: 5px;
+    margin-bottom: 15px;
+    font-weight: bold;
+}
+
+.coin-icon {
+    font-size: 20px;
+    margin-right: 8px;
+}
+
+#shopCoins {
+    color: gold;
+}
+
+.shop-items {
+    max-height: 300px;
+    overflow-y: auto;
+    border: 1px solid #4a2f2f;
+    border-radius: 5px;
+    padding: 10px;
+    background-color: rgba(0, 0, 0, 0.3);
+}
+
+.shop-item {
+    display: flex;
+    align-items: center;
+    padding: 10px;
+    margin-bottom: 8px;
+    background-color: rgba(0, 0, 0, 0.5);
+    border-radius: 5px;
+    border: 1px solid #4a2f2f;
+}
+
+.shop-item:last-child {
+    margin-bottom: 0;
+}
+
+.item-icon {
+    font-size: 24px;
+    margin-right: 10px;
+    width: 30px;
+    text-align: center;
+}
+
+.item-details {
+    flex: 1;
+}
+
+.item-name {
+    font-weight: bold;
+    margin-bottom: 2px;
+}
+
+.item-description {
+    font-size: 12px;
+    color: #cccccc;
+    line-height: 1.2;
+}
+
+.item-price {
+    display: flex;
+    align-items: center;
+    margin: 0 10px;
+    font-weight: bold;
+    color: gold;
+}
+
+.buy-button {
+    background-color: #5a3a3a;
+    color: white;
+    border: none;
+    border-radius: 3px;
+    padding: 5px 10px;
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+.buy-button:hover:not([disabled]) {
+    background-color: #7a5a5a;
+}
+
+.buy-button:disabled {
+    background-color: #444;
+    color: #888;
+    cursor: not-allowed;
+}
+
+.empty-shop-message {
+    display: none; /* Hide this since we now have items */
+}

@@ -2,7 +2,7 @@
 <html lang="pt">
 	<head>
 		<meta charset="utf-8">
-		<title>Last Stand: Apocalypse</title>
+		<title>Apocalipse: Last Stand</title>
 		<link rel="stylesheet" href="styles.css">
 		<link rel="icon" href="assets/icons/favicon.png" type="image/png">
 	</head>
@@ -10,7 +10,7 @@
 		<div id="backgroundScene" style="display: none;"></div>
 		<div id="gameScene" style="display: none;"></div>
 		<div id="menu" class="menu" style="display: none;">
-			<h1>Apocalypse:<br/> Last Stand</h1>
+			<h1>Apocalipse:<br/> Last Stand</h1>
 			<button id="playButton">Play Game</button>
 			<button id="controlsButton">Controls</button>
 		</div>
@@ -37,6 +37,7 @@
 				 <li>TAB - Open inventory</li>
 				<li>1-5 - Select item from hotbar</li>
 				<li>LEFT CLICK - Use selected item</li>
+				<li>B - Open shop</li>
 			</ul>
 			<button id="backButton">Back</button>
 		</div>
@@ -122,6 +123,24 @@
 					</div>
 				</div>
 				<button id="returnToMenuButton" class="large-button">Return to Main Menu</button>
+			</div>
+		</div>
+
+		<!-- Shop interface -->
+		<div id="shop" style="display: none;">
+			<div class="shop-header">
+				<h3>Shop</h3>
+				<button id="closeShop">×</button>
+			</div>
+			<div class="player-coins">
+				<span class="coin-icon">🪙</span>
+				<span id="shopCoins">0</span>
+			</div>
+			<div class="shop-items">
+				<!-- Items will be added here later -->
+				<div class="empty-shop-message">
+					<p>No items available yet</p>
+				</div>
 			</div>
 		</div>
 

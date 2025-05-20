@@ -32,9 +32,11 @@ let showFPS = false;
 let lastTime = performance.now();
 let frameCount = 0;
 
+
 // Item system variables
 let inventory = [null, null, null, null, null]; // 5 slots for items
-let selectedSlot = 0; // Currently selected slot (0-4)
+let invetoryItems = Array(10).fill(null); // 10 additional inventory slots 
+let selectedSlot = 0; // Currently selected slot (0-5)
 let itemIcons = ['🗡️', '🛡️', '🔋', '🧪', '🔍']; // Example icons for items
 
 // Inventory system variables
@@ -91,6 +93,51 @@ const WEAPON_TYPES = {
     KNIFE: 0,
     PISTOL: 1
 };
+
+const ITEM_TYPES = {
+    BANDAGE: 10,
+    MEDKIT: 11,
+    MINI_SHIELD: 12,
+    BIG_SHIELD: 13,
+};
+
+const MAX_STACK_SIZES = {
+    [ITEM_TYPES.BANDAGE]: 15,
+    [ITEM_TYPES.MEDKIT]: 3,
+    [ITEM_TYPES.MINI_SHIELD]: 6,
+    [ITEM_TYPES.BIG_SHIELD]: 3
+};
+
+const SHOP_ITEMS = [
+    {
+        id: ITEM_TYPES.BANDAGE,
+        name: "Bandages",
+        description: "Restores 15 health",
+        price: 5,
+        icon: '🩹'
+    },
+    {
+        id: ITEM_TYPES.MEDKIT,
+        name: "Medkit",
+        description: "Restores 100 health",
+        price: 15,
+        icon: '🧰'
+    },
+    {
+        id: ITEM_TYPES.MINI_SHIELD,
+        name: "Mini Shield",
+        description: "Adds 25 shield points",
+        price: 8,
+        icon: '🛡️'
+    },
+    {
+        id: ITEM_TYPES.BIG_SHIELD,
+        name: "Shield Potion",
+        description: "Adds 50 shield points",
+        price: 20,
+        icon: '🔷'
+    }
+];
 
 // Add pistol-related global variables
 let pistolModel = null;
@@ -373,6 +420,14 @@ function updateInventoryDisplay() {
             // Set icon for non-empty slots
             slot.textContent = getItemSymbol(item);
             slot.classList.remove('empty');
+            
+            // If item is an object with count, add stack count
+            if (typeof item === 'object' && item.count > 1) {
+                const stackCount = document.createElement('span');
+                stackCount.className = 'stack-count';
+                stackCount.textContent = item.count;
+                slot.appendChild(stackCount);
+            }
         } else {
             // Clear empty slots
             slot.textContent = '';
@@ -382,13 +437,17 @@ function updateInventoryDisplay() {
 }
 
 // Update the getItemSymbol function to use the correct pistol emoji
-function getItemSymbol(itemType) {
+function getItemSymbol(item) {
+    // If item is an object with type property
+    const itemType = typeof item === 'object' && item !== null ? item.type : item;
+    
     switch(itemType) {
-        case WEAPON_TYPES.KNIFE: return '🔪'; // Knife emoji
-        case WEAPON_TYPES.PISTOL: return '🔫'; // Gun emoji (changed from shield)
-        case 2: return '🔋'; // Energy
-        case 3: return '🧪'; // Potion
-        case 4: return '🔍'; // Special item
+        case WEAPON_TYPES.KNIFE: return '🔪'; 
+        case WEAPON_TYPES.PISTOL: return '🔫';
+        case ITEM_TYPES.BANDAGE: return '🩹';
+        case ITEM_TYPES.MEDKIT: return '🧰';
+        case ITEM_TYPES.MINI_SHIELD: return '🛡️';
+        case ITEM_TYPES.BIG_SHIELD: return '🔷';
         default: return '?';
     }
 }
@@ -412,17 +471,33 @@ function selectInventorySlot(slotIndex) {
 function useSelectedInventoryItem() {
     if (selectedInventorySlot === -1) return;
     
-    const itemType = inventoryItems[selectedInventorySlot];
-    if (itemType === null) return;
+    const item = inventoryItems[selectedInventorySlot];
+    if (item === null) return;
     
-    // Apply item effect
-    applyItemEffect(itemType);
-    
-    // Remove item from inventory
-    inventoryItems[selectedInventorySlot] = null;
-    
-    // Update inventory display
-    updateInventoryDisplay();
+    // Handle stackable items
+    if (typeof item === 'object' && item !== null) {
+        const itemType = item.type;
+        
+        // Apply effect
+        const consumed = applyItemEffect(itemType);
+        
+        if (consumed) {
+            // Decrease stack count
+            item.count--;
+            
+            // Remove item if count is 0
+            if (item.count <= 0) {
+                inventoryItems[selectedInventorySlot] = null;
+            }
+            
+            // Update UI
+            updateInventoryDisplay();
+        }
+    } else {
+        // For non-stackable items, use the old behavior
+        applyItemEffect(item);
+        inventoryItems[selectedInventorySlot] = null;
+    }
     
     // Clear selection
     selectedInventorySlot = -1;
@@ -458,20 +533,51 @@ function transferToInventory(barSlot) {
     return false;
 }
 
-// Modified addItem function to handle inventory overflow
 function addItem(itemType) {
-    // First try to add to the hotbar
-    const emptySlot = inventory.indexOf(null);
+    // Check if the item is stackable
+    const isStackable = MAX_STACK_SIZES.hasOwnProperty(itemType);
+    const maxStackSize = isStackable ? MAX_STACK_SIZES[itemType] : 1;
+    
+    // First try to stack with existing items in hotbar
+    if (isStackable) {
+        for (let i = 0; i < inventory.length; i++) {
+            const item = inventory[i];
+            if (item && typeof item === 'object' && item.type === itemType) {
+                if (item.count < maxStackSize) {
+                    // Can add to this stack
+                    item.count++;
+                    updateItemBar();
+                    return true;
+                }
+            }
+        }
+        
+        // Then try stacking with inventory items
+        for (let i = 0; i < inventoryItems.length; i++) {
+            const item = inventoryItems[i];
+            if (item && typeof item === 'object' && item.type === itemType) {
+                if (item.count < maxStackSize) {
+                    // Can add to this stack
+                    item.count++;
+                    updateInventoryDisplay();
+                    return true;
+                }
+            }
+        }
+    }
+    
+    // If we can't stack, try to add to an empty slot in hotbar
+    const emptySlot = inventory.findIndex(item => item === null);
     if (emptySlot !== -1) {
-        inventory[emptySlot] = itemType;
+        inventory[emptySlot] = isStackable ? { type: itemType, count: 1 } : itemType;
         updateItemBar();
         return true;
     }
     
     // If hotbar is full, try to add to inventory
-    const emptyInvSlot = inventoryItems.indexOf(null);
+    const emptyInvSlot = inventoryItems.findIndex(item => item === null);
     if (emptyInvSlot !== -1) {
-        inventoryItems[emptyInvSlot] = itemType;
+        inventoryItems[emptyInvSlot] = isStackable ? { type: itemType, count: 1 } : itemType;
         updateInventoryDisplay();
         return true;
     }
@@ -484,38 +590,72 @@ function addItem(itemType) {
 // Centralized function for applying item effects
 function applyItemEffect(itemType) {
     switch(itemType) {
-        case 0: // Knife/Weapon
+        case WEAPON_TYPES.KNIFE: // 0
             console.log('Using knife');
-            // Add a slashing animation
             if (knifeModel) {
                 animateKnifeAttack();
             }
             break;
             
-        case 1: // Shield
-            if (shield < 100) {
-                shield = Math.min(shield + 25, 100);
-                updateHUD();
-                console.log('Shield boosted');
-            }
+        case WEAPON_TYPES.PISTOL: // 1
+            // Pistol is handled separately
             break;
             
-        case 2: // Energy
-            // Apply energy effect
-            console.log('Energy used');
-            break;
-        case 3: // Potion
-            if (health < 100) {
-                health = Math.min(health + 25, 100);
+        case ITEM_TYPES.BANDAGE: // 10
+            // Bandages restore 15 health up to max of 75
+            if (health < 75) {
+                health = Math.min(health + 15, 75);
                 updateHUD();
-                console.log('Health restored');
+                showNotification("Bandage applied");
+                return true; // Item consumed
+            } else {
+                showNotification("Can't use bandages above 75 health");
+                return false; // Item not consumed
             }
-            break;
-        case 4: // Special item
-            // Apply special effect
-            console.log('Special item used');
-            break;
+            
+        case ITEM_TYPES.MEDKIT: // 11
+            // Medkit restores to full health
+            if (health < 100) {
+                health = 100;
+                updateHUD();
+                showNotification("Medkit used");
+                return true; // Item consumed
+            } else {
+                showNotification("Already at full health");
+                return false; // Item not consumed
+            }
+            
+        case ITEM_TYPES.MINI_SHIELD: // 12
+            // Mini shield adds 25 shield up to max of 50
+            if (shield < 50) {
+                shield = Math.min(shield + 25, 50);
+                updateHUD();
+                showNotification("Mini Shield used");
+                return true; // Item consumed
+            } else {
+                showNotification("Can't use mini shields above 50 shield");
+                return false; // Item not consumed
+            }
+            
+        case ITEM_TYPES.BIG_SHIELD: // 13
+            // Big shield adds 50 shield up to max of 100
+            if (shield < 100) {
+                shield = Math.min(shield + 50, 100);
+                updateHUD();
+                showNotification("Shield Potion used");
+                return true; // Item consumed
+            } else {
+                showNotification("Already at full shield");
+                return false; // Item not consumed
+            }
+            
+        default:
+            // Unrecognized item type
+            console.log(`Unknown item type: ${itemType}`);
+            return false; // Item not consumed
     }
+    
+    return true; // Default consumption for other items
 }
 
 // Function to update the item bar display
@@ -534,6 +674,14 @@ function updateItemBar() {
         if (item !== null) {
             // Show item icon
             content.textContent = getItemSymbol(item);
+            
+            // If item is an object with count, add stack count
+            if (typeof item === 'object' && item.count > 1) {
+                const stackCount = document.createElement('span');
+                stackCount.className = 'stack-count';
+                stackCount.textContent = item.count;
+                content.appendChild(stackCount);
+            }
         } else {
             // Clear empty slots
             content.textContent = '';
@@ -554,6 +702,10 @@ function selectSlot(slot) {
 function useSelectedItem() {
     const item = inventory[selectedSlot];
     
+    // Early exit if there's no item
+    if (item === null) return;
+    
+    // Handle weapons
     if (item === WEAPON_TYPES.KNIFE) {
         if (!knifeModel) {
             createKnifeModel();
@@ -562,6 +714,7 @@ function useSelectedItem() {
         knifeModel.visible = true;
         animateKnifeAttack();
         checkEnemyHit();
+        return;
     } 
     else if (item === WEAPON_TYPES.PISTOL) {
         if (!pistolModel) {
@@ -570,9 +723,28 @@ function useSelectedItem() {
         
         pistolModel.visible = true;
         firePistol();
+        return;
     }
-    else if (item !== null) {
-        applyItemEffect(item);
+    
+    // Handle stackable consumable items
+    if (typeof item === 'object' && item !== null) {
+        const itemType = item.type;
+        
+        // Apply effect
+        const consumed = applyItemEffect(itemType);
+        
+        if (consumed) {
+            // Decrease stack count
+            item.count--;
+            
+            // Remove item if count is 0
+            if (item.count <= 0) {
+                inventory[selectedSlot] = null;
+            }
+            
+            // Update UI
+            updateItemBar();
+        }
     }
 }
 
@@ -896,6 +1068,27 @@ function checkCollisions(x, z) {
     return false; // No collision
 }
 
+// Update the shop interface when the game starts
+function updateShopInterface() {
+    // Create the shop header content
+    const shopHeader = document.querySelector('.shop-header');
+    if (shopHeader) {
+        shopHeader.innerHTML = `
+            <h3>Supply Store</h3>
+            <button id="closeShop">×</button>
+        `;
+    }
+    
+    // Create the player coins area
+    const playerCoinsDiv = document.querySelector('.player-coins');
+    if (playerCoinsDiv) {
+        playerCoinsDiv.innerHTML = `
+            <span class="coin-icon">🪙</span>
+            <span id="shopCoins">0</span>
+        `;
+    }
+}
+
 // Update your startGame function
 function startGame() {
     // Create floor for game scene
@@ -973,6 +1166,12 @@ function startGame() {
     document.getElementById('characterMenu').style.display = 'none';
     document.getElementById('backgroundScene').style.display = 'none';
     document.getElementById('gameScene').style.display = 'block';
+
+    // Reset coins
+    playerCoins = 0;
+
+    // Update interface elements
+    updateShopInterface();
     
     // Show the HUD
     document.getElementById('hud').style.display = 'flex';
@@ -981,6 +1180,10 @@ function startGame() {
     health = 100;
     shield = 0;
     updateHUD();
+
+    //Create coin display
+    createCoinDisplay();
+    updateCoinDisplay();
     
     // Add pistol to inventory alongside knife
     inventory = [WEAPON_TYPES.KNIFE, WEAPON_TYPES.PISTOL, null, null, null];
@@ -1339,6 +1542,9 @@ document.addEventListener('keydown', (event) => {
     if (key in keys) keys[key] = true;
     if (event.code === 'ShiftLeft') keys.shift = true;
     if (event.code === 'Space') keys.space = true;
+    if (event.code === 'KeyB' && gameStarted && !isPaused || isShopOpen) {
+        toggleShop();
+    } 
     
     // Item slot selection with number keys
     if (gameStarted && !isPaused) {
@@ -1431,6 +1637,10 @@ const NORMAL_HEIGHT = 2;
 const CROUCH_HEIGHT = 1;
 let mountains = [];
 let isPaused = false;
+let playerCoins = 0;
+let isShopOpen = false;
+let infiniteMoneyCheat = false;
+let originalCoinColor = null;
 
 // Update the color selection functionality
 let selectedColor = null;
@@ -1467,6 +1677,10 @@ document.getElementById('startGame').addEventListener('click', () => {
     document.body.requestPointerLock();
 });
 
+document.addEventListener('DOMContentLoaded', () => {
+    document.getElementById('closeShop').addEventListener('click', toggleShop);
+});
+
 // Create floor and mountains for menu background
 function createMenuScene() {
     // Add lights first
@@ -1489,6 +1703,119 @@ function createMenuScene() {
 
     // Create mountains
     createMountainsForMenu();
+}
+
+// Update the toggleShop function to populate shop items
+function toggleShop() {
+    if (!gameStarted || isPaused) return;
+    
+    isShopOpen = !isShopOpen;
+    document.getElementById('shop').style.display = isShopOpen ? 'block' : 'none';
+
+    // Toggle the coin container visibility when shop opens/closes
+    const coinContainer = document.getElementById('coinContainer');
+    if (coinContainer) {
+        coinContainer.style.display = isShopOpen ? 'none' : 'flex';
+    }
+    
+    // If opening shop, pause game mechanics and hide crosshair
+    if (isShopOpen) {
+        document.exitPointerLock();
+        hideCrosshair();
+        
+        // Update the coin display in the shop
+        document.getElementById('shopCoins').textContent = playerCoins;
+        
+        // Populate shop items
+        populateShopItems();
+        
+        // Add event listener to the close button right after creating/showing the shop
+        const closeButton = document.getElementById('closeShop');
+        if (closeButton) {
+            // Remove existing listeners first to prevent duplicates
+            closeButton.replaceWith(closeButton.cloneNode(true));
+            document.getElementById('closeShop').addEventListener('click', toggleShop);
+        }
+    } else {
+        // If closing, show crosshair and lock pointer
+        showCrosshair();
+        document.body.requestPointerLock();
+    }
+}
+
+// Function to populate the shop with items
+function populateShopItems() {
+    const shopItemsContainer = document.querySelector('.shop-items');
+    shopItemsContainer.innerHTML = ''; // Clear existing items
+    
+    // Create each shop item
+    SHOP_ITEMS.forEach(item => {
+        const itemElement = document.createElement('div');
+        itemElement.className = 'shop-item';
+        itemElement.innerHTML = `
+            <div class="item-icon">${item.icon}</div>
+            <div class="item-details">
+                <div class="item-name">${item.name}</div>
+                <div class="item-description">${item.description}</div>
+            </div>
+            <div class="item-price">
+                <span class="coin-icon">🪙</span>
+                <span>${item.price}</span>
+            </div>
+            <button class="buy-button" data-item-id="${item.id}" ${!infiniteMoneyCheat && playerCoins < item.price ? 'disabled' : ''}>Buy</button>
+        `;
+        
+        shopItemsContainer.appendChild(itemElement);
+    });
+    
+    // Add event listeners to buy buttons
+    document.querySelectorAll('.buy-button').forEach(button => {
+        button.addEventListener('click', (e) => {
+            const itemId = parseInt(e.target.dataset.itemId);
+            purchaseItem(itemId);
+        });
+    });
+}
+
+// Function to handle item purchase
+function purchaseItem(itemId) {
+    const item = SHOP_ITEMS.find(item => item.id === itemId);
+    
+    if (!item) {
+        console.error('Item not found');
+        return;
+    }
+    
+    // Check if player has enough coins or infinite money is active
+    if (infiniteMoneyCheat || playerCoins >= item.price) {
+        // Only deduct coins if infinite money is NOT active
+        if (!infiniteMoneyCheat) {
+            playerCoins -= item.price;
+        }
+        
+        // Add item to inventory
+        if (addItem(item.id)) {
+            // Update coin displays
+            document.getElementById('shopCoins').textContent = infiniteMoneyCheat ? "INFINITE" : playerCoins;
+            updateCoinDisplay();
+            
+            // Show notification
+            showNotification(`Purchased ${item.name}!`, 2000);
+            
+            // Refresh shop items to update button states
+            populateShopItems();
+            
+            // Important: Do NOT request pointer lock here!
+        } else {
+            // Inventory full, refund coins if not using infinite money
+            if (!infiniteMoneyCheat) {
+                playerCoins += item.price;
+            }
+            showNotification('Inventory is full!', 2000);
+        }
+    } else {
+        showNotification('Not enough coins!', 2000);
+    }
 }
 
 function createMountainsForMenu() {
@@ -1534,6 +1861,13 @@ function updateHUD() {
     document.getElementById('healthText').textContent = Math.ceil(health);
     document.getElementById('shieldBar').style.width = `${shield}%`;
     document.getElementById('shieldText').textContent = Math.ceil(shield);
+}
+
+function updateCoinDisplay() {
+    const coinDisplay = document.getElementById('coinDisplay');
+    if (coinDisplay) {
+        coinDisplay.textContent = infiniteMoneyCheat ? "INFINITE" : playerCoins;
+    }
 }
 
 // Add pointer lock setup
@@ -2207,6 +2541,64 @@ function attackPlayer(enemy) {
     takeDamage(enemy.userData.damage);
 }
 
+// Function to toggle infinite money cheat
+function toggleInfiniteMoney() {
+    infiniteMoneyCheat = !infiniteMoneyCheat;
+    const status = infiniteMoneyCheat ? "ACTIVATED" : "DEACTIVATED";
+    
+    // Store original coin display color if activating
+    const coinDisplay = document.getElementById('coinDisplay');
+    if (infiniteMoneyCheat && !originalCoinColor && coinDisplay) {
+        originalCoinColor = coinDisplay.style.color;
+        // Change coin display to green when cheat is active
+        coinDisplay.style.color = '#ffcc00';
+        
+        // Set to special text instead of a number
+        playerCoins = infiniteMoneyCheat ? 9999 : playerCoins;
+        coinDisplay.textContent = "INFINITE";
+        
+        // Also update shop display if shop is open
+        const shopCoins = document.getElementById('shopCoins');
+        if (shopCoins) {
+            shopCoins.textContent = "INFINITE";
+            shopCoins.style.color = '#ffcc00';
+        }
+    } else if (!infiniteMoneyCheat && originalCoinColor) {
+        // Restore original color when deactivating
+        if (coinDisplay) {
+            coinDisplay.style.color = originalCoinColor;
+            coinDisplay.textContent = playerCoins;
+        }
+        
+        // Restore shop coins color and value too
+        const shopCoins = document.getElementById('shopCoins');
+        if (shopCoins) {
+            shopCoins.textContent = playerCoins;
+            shopCoins.style.color = 'gold';
+        }
+    }
+    
+    // Display fancy console message
+    console.log(`%c💰 INFINITE MONEY ${status} 💰`, 
+                'background: #000; color: #ffcc00; font-size: 18px; padding: 5px; border-radius: 5px;');
+    
+    // Show in-game notification
+    showNotification(`Infinite Money: ${status}`, 3000);
+    
+    // Update all displays
+    updateCoinDisplay();
+    
+    return infiniteMoneyCheat;
+}
+
+
+// Make the function available in the console
+window.toggleInfiniteMoney = toggleInfiniteMoney;
+
+// Add a hint in the console
+console.log("%c💰 CHEAT CODE AVAILABLE: Type toggleInfiniteMoney() in the console for unlimited coins", 
+           "background: #222; color: #ffcc00; font-size: 14px; padding: 5px; border-radius: 5px;");
+
 // Function to toggle infinite health cheat
 function toggleInfiniteHealth() {
     infiniteHealthCheat = !infiniteHealthCheat;
@@ -2303,17 +2695,23 @@ function defeatEnemy(enemy) {
     switch (enemy.userData.type) {
         case ENEMY_TYPES.NORMAL:
             gameStats.kills.normal++;
+            playerCoins += 1; // Add coins for normal enemy
             break;
         case ENEMY_TYPES.TANK:
             gameStats.kills.tank++;
+            playerCoins += 5; // Add coins for tank enemy
             break;
         case ENEMY_TYPES.RANGED:
             gameStats.kills.ranged++;
+            playerCoins += 3; // Add coins for ranged enemy
             break;
         case ENEMY_TYPES.BOSS:
             gameStats.kills.boss++;
+            playerCoins += 10; // Add coins for boss enemy
             break;
     }
+
+    updateCoinDisplay();
     
     // Remove from activeEnemies array
     const index = activeEnemies.indexOf(enemy);
@@ -2608,10 +3006,48 @@ function resetGame() {
     // Reset player stats
     health = 100;
     shield = 0;
+    playerCoins = 0;
     
     // Reset weapon stats
     pistolAmmo = pistolMaxAmmo;
     pistolReloading = false;
+}
+
+// Function to create the coin display in the HUD
+function createCoinDisplay() {
+    const hud = document.getElementById('hud');
+    
+    // Create coin container
+    const coinContainer = document.createElement('div');
+    coinContainer.id = 'coinContainer';
+    coinContainer.style.position = 'absolute';
+    coinContainer.style.bottom = '80px'; // Position above the item bar
+    coinContainer.style.right = '20px'; // Changed from left to right
+    coinContainer.style.backgroundColor = 'rgba(0, 0, 0, 0.5)';
+    coinContainer.style.padding = '8px 12px';
+    coinContainer.style.borderRadius = '5px';
+    coinContainer.style.display = 'flex';
+    coinContainer.style.alignItems = 'center';
+    coinContainer.style.gap = '5px';
+    
+    // Create coin icon
+    const coinIcon = document.createElement('span');
+    coinIcon.textContent = '🪙';
+    coinIcon.style.fontSize = '20px';
+    
+    // Create coin counter
+    const coinDisplay = document.createElement('span');
+    coinDisplay.id = 'coinDisplay';
+    coinDisplay.style.color = 'gold';
+    coinDisplay.style.fontSize = '18px';
+    coinDisplay.style.fontWeight = 'bold';
+    coinDisplay.textContent = '0';
+    
+    // Assemble the container
+    coinContainer.appendChild(coinIcon);
+    coinContainer.appendChild(coinDisplay);
+    
+    hud.appendChild(coinContainer);
 }
 
 // Improved knife hit detection function
