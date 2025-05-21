@@ -391,10 +391,24 @@ function toggleInventory() {
     
     // If opening inventory, pause game mechanics and hide crosshair
     if (isInventoryOpen) {
-        document.exitPointerLock();
+        // Force cursor to be visible EVERYWHERE, not just in the inventory
+        document.body.style.cursor = 'auto';
+        
+        // Exit pointer lock to allow cursor movement
+        if (document.pointerLockElement) {
+            document.exitPointerLock();
+        }
+        
         hideCrosshair(); // Hide crosshair when inventory is open
+        
         // Initialize drag-drop if needed
         setupItemBarDragAndDrop();
+        
+        // Add click handler to the inventory itself to prevent pointer lock
+        const inventory = document.getElementById('inventory');
+        inventory.addEventListener('click', (e) => {
+            e.stopPropagation(); // Prevent clicks inside inventory from triggering pointer lock
+        });
     } else {
         // If closing, clear selection and show crosshair
         selectedInventorySlot = -1;
@@ -403,6 +417,7 @@ function toggleInventory() {
         });
         
         showCrosshair(); // Show crosshair when inventory is closed
+        document.body.style.cursor = 'none';
         document.body.requestPointerLock();
     }
     
@@ -588,6 +603,7 @@ function addItem(itemType) {
 }
 
 // Centralized function for applying item effects
+// Update the applyItemEffect function to include animations
 function applyItemEffect(itemType) {
     switch(itemType) {
         case WEAPON_TYPES.KNIFE: // 0
@@ -607,9 +623,10 @@ function applyItemEffect(itemType) {
                 health = Math.min(health + 15, 75);
                 updateHUD();
                 showNotification("Bandage applied");
+                playItemUseCompletionEffect(itemType);
                 return true; // Item consumed
             } else {
-                showNotification("Can't use bandages above 75 health");
+                showNotification("Already at maximum bandage health");
                 return false; // Item not consumed
             }
             
@@ -619,6 +636,7 @@ function applyItemEffect(itemType) {
                 health = 100;
                 updateHUD();
                 showNotification("Medkit used");
+                playItemUseCompletionEffect(itemType);
                 return true; // Item consumed
             } else {
                 showNotification("Already at full health");
@@ -631,9 +649,10 @@ function applyItemEffect(itemType) {
                 shield = Math.min(shield + 25, 50);
                 updateHUD();
                 showNotification("Mini Shield used");
+                playItemUseCompletionEffect(itemType);
                 return true; // Item consumed
             } else {
-                showNotification("Can't use mini shields above 50 shield");
+                showNotification("Already at maximum mini shield");
                 return false; // Item not consumed
             }
             
@@ -643,6 +662,7 @@ function applyItemEffect(itemType) {
                 shield = Math.min(shield + 50, 100);
                 updateHUD();
                 showNotification("Shield Potion used");
+                playItemUseCompletionEffect(itemType);
                 return true; // Item consumed
             } else {
                 showNotification("Already at full shield");
@@ -702,10 +722,10 @@ function selectSlot(slot) {
 function useSelectedItem() {
     const item = inventory[selectedSlot];
     
-    // Early exit if there's no item
-    if (item === null) return;
+    // Early exit if there's no item or already using an item
+    if (item === null || usingItem) return;
     
-    // Handle weapons
+    // Handle weapons (unchanged)
     if (item === WEAPON_TYPES.KNIFE) {
         if (!knifeModel) {
             createKnifeModel();
@@ -730,20 +750,323 @@ function useSelectedItem() {
     if (typeof item === 'object' && item !== null) {
         const itemType = item.type;
         
-        // Apply effect
+        // Check if this item can be used (same checks as in applyItemEffect)
+        let canUseItem = false;
+        
+        switch (itemType) {
+            case ITEM_TYPES.BANDAGE:
+                canUseItem = health < 75;
+                break;
+            case ITEM_TYPES.MEDKIT:
+                canUseItem = health < 100;
+                break;
+            case ITEM_TYPES.MINI_SHIELD:
+                canUseItem = shield < 50;
+                break;
+            case ITEM_TYPES.BIG_SHIELD:
+                canUseItem = shield < 100;
+                break;
+        }
+        
+        if (!canUseItem) {
+            // Show notification about why item can't be used
+            switch (itemType) {
+                case ITEM_TYPES.BANDAGE:
+                case ITEM_TYPES.MEDKIT:
+                    showNotification("Already at maximum health");
+                    break;
+                case ITEM_TYPES.MINI_SHIELD:
+                case ITEM_TYPES.BIG_SHIELD:
+                    showNotification("Already at maximum shield");
+                    break;
+            }
+            return;
+        }
+        
+        // Start item use with timer
+        startItemUse(itemType);
+    }
+}
+
+// Function to create a Fortnite-style circular timer
+function createCircularTimer(duration) {
+    // Remove any existing timer
+    removeCircularTimer();
+    
+    // Create the SVG container
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.id = 'circularTimer';
+    svg.setAttribute('width', '60');
+    svg.setAttribute('height', '60');
+    svg.style.position = 'absolute';
+    svg.style.left = '50%';
+    svg.style.bottom = '25%'; // Position above health bar
+    svg.style.transform = 'translateX(-50%)';
+    svg.style.zIndex = '1000';
+    
+    // Background circle
+    const backgroundCircle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+    backgroundCircle.setAttribute('cx', '30');
+    backgroundCircle.setAttribute('cy', '30');
+    backgroundCircle.setAttribute('r', '25');
+    backgroundCircle.setAttribute('fill', 'rgba(0, 0, 0, 0.5)');
+    backgroundCircle.setAttribute('stroke', '#ffffff');
+    backgroundCircle.setAttribute('stroke-width', '2');
+    svg.appendChild(backgroundCircle);
+    
+    // Progress circle
+    const progressCircle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+    progressCircle.setAttribute('cx', '30');
+    progressCircle.setAttribute('cy', '30');
+    progressCircle.setAttribute('r', '25');
+    progressCircle.setAttribute('fill', 'none');
+    progressCircle.setAttribute('stroke', '#00aaff'); // Blue for shield, can change based on item
+    progressCircle.setAttribute('stroke-width', '4');
+    progressCircle.setAttribute('stroke-dasharray', `${2 * Math.PI * 25}`);
+    progressCircle.setAttribute('stroke-dashoffset', `${2 * Math.PI * 25}`); // Start with full offset (empty)
+    progressCircle.setAttribute('transform', 'rotate(-90, 30, 30)'); // Start from top
+    progressCircle.style.transition = 'stroke-dashoffset linear'; // Make linear transition
+    progressCircle.style.transitionDuration = `${duration}ms`; // Set duration
+    svg.appendChild(progressCircle);
+    
+    // Add to DOM
+    document.body.appendChild(svg);
+    
+    // Set progress circle color based on item type
+    if (currentItemInUse === ITEM_TYPES.BANDAGE || currentItemInUse === ITEM_TYPES.MEDKIT) {
+        progressCircle.setAttribute('stroke', '#00ff00'); // Green for healing items
+    }
+    
+    // Start progress animation
+    setTimeout(() => {
+        progressCircle.setAttribute('stroke-dashoffset', '0'); // Animate to 0 offset (full)
+    }, 10);
+    
+    return svg;
+}
+
+// Function to remove circular timer
+function removeCircularTimer() {
+    try {
+        const timer = document.getElementById('circularTimer');
+        if (timer && timer.parentNode) {
+            timer.parentNode.removeChild(timer);
+        }
+    } catch (error) {
+        console.error("Error removing circular timer:", error);
+    }
+}
+
+// Function to complete item use
+function completeItemUse() {
+    if (!usingItem) return;
+    
+    try {
+        const itemType = currentItemInUse;
+        
+        // Remove the held item model
+        if (heldConsumableModel) {
+            camera.remove(heldConsumableModel);
+            heldConsumableModel = null;
+        }
+        
+        // Stop any ongoing animation
+        if (consumableAnimationId) {
+            cancelAnimationFrame(consumableAnimationId);
+            consumableAnimationId = null;
+        }
+        
+        // Remove timer
+        removeCircularTimer();
+        
+        // Apply item effect and create particles
         const consumed = applyItemEffect(itemType);
+        playItemUseCompletionEffect(itemType);
         
         if (consumed) {
-            // Decrease stack count
-            item.count--;
+            // Get the item from inventory
+            const item = inventory[selectedSlot];
             
-            // Remove item if count is 0
-            if (item.count <= 0) {
-                inventory[selectedSlot] = null;
+            if (item && typeof item === 'object' && item.type === itemType) {
+                // Decrease stack count
+                item.count--;
+                
+                // Remove item if count is 0
+                if (item.count <= 0) {
+                    inventory[selectedSlot] = null;
+                }
+                
+                // Update UI
+                updateItemBar();
+            }
+        }
+    } catch (error) {
+        console.error("Error completing item use:", error);
+    } finally {
+        // Always reset state no matter what happens
+        if (itemUseTimeout) {
+            clearTimeout(itemUseTimeout);
+            itemUseTimeout = null;
+        }
+        
+        usingItem = false;
+        currentItemInUse = null;
+        consumableAnimationInProgress = false;
+        
+        // Update weapon visibility after finishing item use
+        updateWeaponVisibility();
+    }
+}
+
+function playItemUseCompletionEffect(itemType) {
+    // Create particles at player position
+    const particleCount = 20;
+    const particleColor = itemType === ITEM_TYPES.BANDAGE || itemType === ITEM_TYPES.MEDKIT ? 
+                        0x00ff00 : 0x00aaff;
+                        
+    // Position particles around the player's head
+    const particleOrigin = new THREE.Vector3();
+    camera.getWorldPosition(particleOrigin);
+    
+    for (let i = 0; i < particleCount; i++) {
+        const size = 0.03 + Math.random() * 0.03;
+        const geometry = new THREE.SphereGeometry(size, 8, 8);
+        const material = new THREE.MeshBasicMaterial({
+            color: particleColor,
+            transparent: true,
+            opacity: 0.7
+        });
+        
+        const particle = new THREE.Mesh(geometry, material);
+        
+        // Position randomly around player
+        particle.position.set(
+            particleOrigin.x + (Math.random() - 0.5) * 0.5,
+            particleOrigin.y + (Math.random() - 0.5) * 0.5,
+            particleOrigin.z + (Math.random() - 0.5) * 0.5
+        );
+        
+        // Add to scene
+        scene.add(particle);
+        
+        // Particle animation
+        const particleVelocity = new THREE.Vector3(
+            (Math.random() - 0.5) * 0.02,
+            Math.random() * 0.03,
+            (Math.random() - 0.5) * 0.02
+        );
+        
+        const particleStartTime = performance.now();
+        const particleLifetime = 800 + Math.random() * 500;
+        
+        function animateParticle() {
+            const now = performance.now();
+            const elapsed = now - particleStartTime;
+            const progress = elapsed / particleLifetime;
+            
+            if (progress >= 1) {
+                scene.remove(particle);
+                return;
             }
             
-            // Update UI
-            updateItemBar();
+            // Move particle and fade out
+            particle.position.add(particleVelocity);
+            particle.material.opacity = 0.7 * (1 - progress);
+            
+            requestAnimationFrame(animateParticle);
+        }
+        
+        requestAnimationFrame(animateParticle);
+    }
+}
+
+function stopItemUseAnimation() {
+    try {
+        if (heldConsumableModel) {
+            camera.remove(heldConsumableModel);
+            heldConsumableModel = null;
+        }
+        
+        if (consumableAnimationId) {
+            cancelAnimationFrame(consumableAnimationId);
+            consumableAnimationId = null;
+        }
+        
+        consumableAnimationInProgress = false;
+    } catch (error) {
+        console.error("Error stopping item animation:", error);
+    }
+}
+
+// Function to get item name from type
+function getItemName(itemType) {
+    switch(itemType) {
+        case ITEM_TYPES.BANDAGE: return "Bandage";
+        case ITEM_TYPES.MEDKIT: return "Medkit";
+        case ITEM_TYPES.MINI_SHIELD: return "Mini Shield";
+        case ITEM_TYPES.BIG_SHIELD: return "Shield Potion";
+        default: return "Item";
+    }
+}
+
+// Function to start item use with circular timer
+function startItemUse(itemType) {
+    // Set using item state
+    usingItem = true;
+    currentItemInUse = itemType;
+    itemUseStartTime = performance.now();
+    
+    // Create the held consumable model
+    createHeldConsumableModel(itemType);
+    
+    // Start the animation that will run for the full duration
+    animateHeldConsumable(itemType);
+    
+    // Show notification
+    const itemName = getItemName(itemType);
+    showNotification(`Using ${itemName}...`);
+    
+    // Create circular progress timer
+    createCircularTimer(ITEM_USE_DURATIONS[itemType]);
+    
+    // Clear any existing timeout to prevent multiple timers
+    if (itemUseTimeout) {
+        clearTimeout(itemUseTimeout);
+    }
+    
+    // Set timeout for item use completion - must match animation duration exactly
+    itemUseTimeout = setTimeout(() => {
+        completeItemUse();
+    }, ITEM_USE_DURATIONS[itemType]);
+}
+
+
+// Update the checkItemPickups function to include pickup animation
+function checkItemPickups() {
+    if (!player) return;
+    
+    // Get all meshes with pickup data
+    const pickupItems = scene.children.filter(
+        obj => obj.userData && obj.userData.pickupable
+    );
+    
+    const pickupDistance = 2; // Distance for pickup
+    
+    for (let i = pickupItems.length - 1; i >= 0; i--) {
+        const item = pickupItems[i];
+        const distance = player.position.distanceTo(item.position);
+        
+        if (distance < pickupDistance) {
+            const itemType = item.userData.itemType;
+            
+            // Start pickup animation
+            playItemPickupAnimation(item, () => {
+                // After animation completes, add to inventory
+                if (addItem(itemType)) {
+                    // Show what was picked up
+                    showNotification(`Picked up ${getItemName(itemType)}`);
+                }
+            });
         }
     }
 }
@@ -898,21 +1221,60 @@ function adjustKnifeRotation(x, y, z) {
 function updateWeaponVisibility() {
     if (!gameStarted) return;
     
+    // Get current selected item
+    const currentItem = inventory[selectedSlot];
+    
     // Handle knife visibility
     if (knifeModel) {
-        knifeModel.visible = (inventory[selectedSlot] === WEAPON_TYPES.KNIFE);
+        knifeModel.visible = (currentItem === WEAPON_TYPES.KNIFE);
     }
     
     // Handle pistol visibility
     if (pistolModel) {
-        pistolModel.visible = (inventory[selectedSlot] === WEAPON_TYPES.PISTOL);
+        pistolModel.visible = (currentItem === WEAPON_TYPES.PISTOL);
+    }
+    
+    // Handle consumable item visibility
+    if (currentItem !== null && typeof currentItem === 'object') {
+        // This is a consumable item (has a type property)
+        const itemType = currentItem.type;
+        
+        // Check if it's a consumable item type
+        if ([ITEM_TYPES.BANDAGE, ITEM_TYPES.MEDKIT, 
+             ITEM_TYPES.MINI_SHIELD, ITEM_TYPES.BIG_SHIELD].includes(itemType)) {
+            
+            // Create the held model if it doesn't exist or is a different type
+            if (!heldConsumableModel || heldConsumableModel.userData.itemType !== itemType) {
+                createHeldConsumableModel(itemType);
+                
+                // Store the item type in userData for future reference
+                if (heldConsumableModel) {
+                    heldConsumableModel.userData.itemType = itemType;
+                }
+            }
+            
+            // Show the consumable model
+            if (heldConsumableModel) {
+                heldConsumableModel.visible = true;
+            }
+        } else {
+            // Hide consumable model for non-consumable items
+            if (heldConsumableModel) {
+                heldConsumableModel.visible = false;
+            }
+        }
+    } else {
+        // Hide consumable model for weapons or empty slots
+        if (heldConsumableModel) {
+            heldConsumableModel.visible = false;
+        }
     }
     
     // Update ammo display container visibility
     const ammoContainer = document.getElementById('ammoContainer');
     if (ammoContainer) {
         // Hide/show the container, not just the display
-        ammoContainer.style.display = (inventory[selectedSlot] === WEAPON_TYPES.PISTOL) ? 'block' : 'none';
+        ammoContainer.style.display = (currentItem === WEAPON_TYPES.PISTOL) ? 'block' : 'none';
     }
 }
 
@@ -1172,6 +1534,8 @@ function startGame() {
 
     // Update interface elements
     updateShopInterface();
+
+    createItemModels();
     
     // Show the HUD
     document.getElementById('hud').style.display = 'flex';
@@ -1507,9 +1871,16 @@ document.getElementById('controlsButton').addEventListener('click', () => {
     document.getElementById('controlsMenu').style.display = 'block';
 });
 
-// Update the back button handler
+// Update the back button handler to restore round info opacity
 document.getElementById('backButton').addEventListener('click', () => {
     document.getElementById('controlsMenu').style.display = 'none';
+    
+    // Restore round info opacity regardless of where we're returning to
+    const roundInfo = document.getElementById('roundInfo');
+    if (roundInfo) {
+        roundInfo.style.opacity = '1';
+        roundInfo.style.pointerEvents = 'auto'; // Re-enable interaction
+    }
     
     // Return to the appropriate menu based on where we came from
     if (controlsAccessedFrom === 'main') {
@@ -1536,6 +1907,43 @@ function onWindowResize() {
     menuRenderer.setSize(window.innerWidth, window.innerHeight);
 }
 
+// Function to cancel item use
+function cancelItemUse() {
+    if (!usingItem) return;
+    
+    // Clear timeout
+    if (itemUseTimeout) {
+        clearTimeout(itemUseTimeout);
+        itemUseTimeout = null;
+    }
+    
+    // Stop animation
+    if (consumableAnimationId) {
+        cancelAnimationFrame(consumableAnimationId);
+        consumableAnimationId = null;
+    }
+    
+    // Remove held model
+    if (heldConsumableModel) {
+        camera.remove(heldConsumableModel);
+        heldConsumableModel = null;
+    }
+    
+    // Remove timer
+    removeCircularTimer();
+    
+    // Reset state
+    usingItem = false;
+    currentItemInUse = null;
+    consumableAnimationInProgress = false;
+    
+    // Show notification
+    showNotification("Canceled item use");
+    
+    // Update weapon visibility
+    updateWeaponVisibility();
+}
+
 // Replace the existing fullscreen handler
 document.addEventListener('keydown', (event) => {
     const key = event.key.toLowerCase();
@@ -1547,13 +1955,19 @@ document.addEventListener('keydown', (event) => {
     } 
     
     // Item slot selection with number keys
-    if (gameStarted && !isPaused) {
+     if (gameStarted && !isPaused) {
         if (event.key >= '1' && event.key <= '5') {
-            selectSlot(parseInt(event.key) - 1);
+            const newSlot = parseInt(event.key) - 1;
+            
+            // Cancel item use if changing slots while using an item
+            if (usingItem && newSlot !== selectedSlot) {
+                cancelItemUse();
+            }
+            
+            selectSlot(newSlot);
         }
-        
-        // Note: Removed the E key binding for item usage here
     }
+        
     
     // Toggle inventory with 'Tab' key ONLY
     if (gameStarted && !isPaused && event.code === 'Tab') {
@@ -1614,6 +2028,13 @@ document.addEventListener('click', (event) => {
                 checkEnemyHit();
             }
         }
+        if (isShopOpen || isInventoryOpen) {
+        return;
+        }
+
+        if (gameStarted && !isLocked && !isPaused) {
+        document.body.requestPointerLock();
+        }
     }
 });
 
@@ -1641,6 +2062,16 @@ let playerCoins = 0;
 let isShopOpen = false;
 let infiniteMoneyCheat = false;
 let originalCoinColor = null;
+let heldConsumableModel = null;
+let consumableAnimationInProgress = false;
+let consumableAnimationId = null;
+let usingItem = false;
+let currentItemInUse = null;
+let itemUseStartTime = 0;
+let itemUseTimeout = null;
+
+const HELD_ITEM_POSITION = new THREE.Vector3(0.3, -0.3, -0.5);
+const HELD_ITEM_ROTATION = new THREE.Euler(0, Math.PI, 0);
 
 // Update the color selection functionality
 let selectedColor = null;
@@ -1720,11 +2151,18 @@ function toggleShop() {
     
     // If opening shop, pause game mechanics and hide crosshair
     if (isShopOpen) {
-        document.exitPointerLock();
+        // Force cursor to be visible
+        document.body.style.cursor = 'auto';
+        
+        // Exit pointer lock to allow cursor movement
+        if (document.pointerLockElement) {
+            document.exitPointerLock();
+        }
+        
         hideCrosshair();
         
         // Update the coin display in the shop
-        document.getElementById('shopCoins').textContent = playerCoins;
+        document.getElementById('shopCoins').textContent = infiniteMoneyCheat ? "INFINITE" : playerCoins;
         
         // Populate shop items
         populateShopItems();
@@ -1739,6 +2177,7 @@ function toggleShop() {
     } else {
         // If closing, show crosshair and lock pointer
         showCrosshair();
+        document.body.style.cursor = 'none';
         document.body.requestPointerLock();
     }
 }
@@ -1768,12 +2207,19 @@ function populateShopItems() {
         shopItemsContainer.appendChild(itemElement);
     });
     
-    // Add event listeners to buy buttons
+    // Add event listeners to buy buttons with stopPropagation
     document.querySelectorAll('.buy-button').forEach(button => {
         button.addEventListener('click', (e) => {
+            e.stopPropagation(); // Stop event from bubbling up to document
             const itemId = parseInt(e.target.dataset.itemId);
             purchaseItem(itemId);
         });
+    });
+    
+    // Add click handler to the shop container itself
+    const shop = document.getElementById('shop');
+    shop.addEventListener('click', (e) => {
+        e.stopPropagation(); // Prevent clicks inside shop from triggering pointer lock
     });
 }
 
@@ -1816,6 +2262,637 @@ function purchaseItem(itemId) {
     } else {
         showNotification('Not enough coins!', 2000);
     }
+}
+
+// Function to create detailed health and shield item models
+function createItemModels() {
+    // Store the models in this object for reuse
+    window.itemModels = {
+        bandage: createBandageModel(),
+        medkit: createMedkitModel(),
+        miniShield: createMiniShieldModel(),
+        bigShield: createBigShieldModel()
+    };
+}
+
+// Model for bandages (white bandage roll)
+function createBandageModel() {
+    const group = new THREE.Group();
+    
+    // Main bandage roll (white cylinder)
+    const rollGeometry = new THREE.CylinderGeometry(0.15, 0.15, 0.15, 16);
+    const rollMaterial = new THREE.MeshStandardMaterial({ 
+        color: 0xffffff,
+        roughness: 0.3,
+        metalness: 0.1
+    });
+    const roll = new THREE.Mesh(rollGeometry, rollMaterial);
+    roll.rotation.z = Math.PI/2; // Lay on its side
+    
+    // Add some details to make it look like a bandage
+    const stripe1 = createStripe();
+    stripe1.position.y = 0.03;
+    
+    const stripe2 = createStripe();
+    stripe2.position.y = -0.03;
+    
+    group.add(roll);
+    group.add(stripe1);
+    group.add(stripe2);
+    
+    return group;
+    
+    // Helper function for bandage stripes
+    function createStripe() {
+        const stripeGeometry = new THREE.BoxGeometry(0.17, 0.01, 0.08);
+        const stripeMaterial = new THREE.MeshStandardMaterial({ color: 0xffcc99 });
+        return new THREE.Mesh(stripeGeometry, stripeMaterial);
+    }
+}
+
+// Model for medkit (red box with white cross)
+function createMedkitModel() {
+    const group = new THREE.Group();
+    
+    // Main box (red)
+    const boxGeometry = new THREE.BoxGeometry(0.4, 0.25, 0.4);
+    const boxMaterial = new THREE.MeshStandardMaterial({ 
+        color: 0xdd0000,
+        roughness: 0.3,
+        metalness: 0.1
+    });
+    const box = new THREE.Mesh(boxGeometry, boxMaterial);
+    
+    // White cross - horizontal part
+    const hCrossGeometry = new THREE.BoxGeometry(0.28, 0.05, 0.05);
+    const crossMaterial = new THREE.MeshStandardMaterial({ color: 0xffffff });
+    const hCross = new THREE.Mesh(hCrossGeometry, crossMaterial);
+    hCross.position.y = 0.15; // Place on top of the box
+    
+    // White cross - vertical part
+    const vCrossGeometry = new THREE.BoxGeometry(0.05, 0.05, 0.28);
+    const vCross = new THREE.Mesh(vCrossGeometry, crossMaterial);
+    vCross.position.y = 0.15; // Place on top of the box
+    
+    group.add(box);
+    group.add(hCross);
+    group.add(vCross);
+    
+    return group;
+}
+
+// Model for mini shield potion (small blue bottle)
+function createMiniShieldModel() {
+    const group = new THREE.Group();
+    
+    // Bottle body (blue cylinder)
+    const bottleGeometry = new THREE.CylinderGeometry(0.1, 0.12, 0.25, 16);
+    const bottleMaterial = new THREE.MeshStandardMaterial({ 
+        color: 0x00aaff,
+        transparent: true,
+        opacity: 0.8,
+        roughness: 0.1,
+        metalness: 0.8
+    });
+    const bottle = new THREE.Mesh(bottleGeometry, bottleMaterial);
+    
+    // Bottle neck
+    const neckGeometry = new THREE.CylinderGeometry(0.05, 0.07, 0.06, 16);
+    const neckMaterial = new THREE.MeshStandardMaterial({ 
+        color: 0x0088cc,
+        transparent: true,
+        opacity: 0.9,
+        roughness: 0.1,
+        metalness: 0.5 
+    });
+    const neck = new THREE.Mesh(neckGeometry, neckMaterial);
+    neck.position.y = 0.15;
+    
+    // Bottle cap
+    const capGeometry = new THREE.CylinderGeometry(0.05, 0.05, 0.04, 16);
+    const capMaterial = new THREE.MeshStandardMaterial({ 
+        color: 0x0055aa,
+        roughness: 0.2,
+        metalness: 0.7
+    });
+    const cap = new THREE.Mesh(capGeometry, capMaterial);
+    cap.position.y = 0.2;
+    
+    // Add glow effect for shield potions
+    const glowGeometry = new THREE.SphereGeometry(0.18, 16, 16);
+    const glowMaterial = new THREE.MeshBasicMaterial({
+        color: 0x00aaff,
+        transparent: true,
+        opacity: 0.15,
+        side: THREE.BackSide
+    });
+    const glow = new THREE.Mesh(glowGeometry, glowMaterial);
+    
+    group.add(bottle);
+    group.add(neck);
+    group.add(cap);
+    group.add(glow);
+    
+    return group;
+}
+
+// Model for big shield potion (large blue bottle)
+function createBigShieldModel() {
+    const group = new THREE.Group();
+    
+    // Bottle body (larger blue cylinder)
+    const bottleGeometry = new THREE.CylinderGeometry(0.15, 0.18, 0.4, 16);
+    const bottleMaterial = new THREE.MeshStandardMaterial({ 
+        color: 0x0055ff,
+        transparent: true,
+        opacity: 0.8,
+        roughness: 0.1,
+        metalness: 0.8
+    });
+    const bottle = new THREE.Mesh(bottleGeometry, bottleMaterial);
+    
+    // Bottle neck
+    const neckGeometry = new THREE.CylinderGeometry(0.07, 0.1, 0.08, 16);
+    const neckMaterial = new THREE.MeshStandardMaterial({ 
+        color: 0x0044cc,
+        transparent: true,
+        opacity: 0.9,
+        roughness: 0.1,
+        metalness: 0.5
+    });
+    const neck = new THREE.Mesh(neckGeometry, neckMaterial);
+    neck.position.y = 0.24;
+    
+    // Bottle cap
+    const capGeometry = new THREE.CylinderGeometry(0.07, 0.07, 0.05, 16);
+    const capMaterial = new THREE.MeshStandardMaterial({ 
+        color: 0x003399,
+        roughness: 0.2,
+        metalness: 0.7
+    });
+    const cap = new THREE.Mesh(capGeometry, capMaterial);
+    cap.position.y = 0.3;
+    
+    // Add stronger glow effect for big shield potions
+    const glowGeometry = new THREE.SphereGeometry(0.28, 16, 16);
+    const glowMaterial = new THREE.MeshBasicMaterial({
+        color: 0x0055ff,
+        transparent: true,
+        opacity: 0.2,
+        side: THREE.BackSide
+    });
+    const glow = new THREE.Mesh(glowGeometry, glowMaterial);
+    
+    group.add(bottle);
+    group.add(neck);
+    group.add(cap);
+    group.add(glow);
+    
+    return group;
+}
+
+// Update the createConsumableItem function to use detailed models
+function createConsumableItem(itemType, position) {
+    // If models haven't been created yet, create them
+    if (!window.itemModels) {
+        createItemModels();
+    }
+    
+    let itemModel;
+    
+    // Select the appropriate model based on item type
+    switch(itemType) {
+        case ITEM_TYPES.BANDAGE:
+            itemModel = window.itemModels.bandage.clone();
+            break;
+            
+        case ITEM_TYPES.MEDKIT:
+            itemModel = window.itemModels.medkit.clone();
+            break;
+            
+        case ITEM_TYPES.MINI_SHIELD:
+            itemModel = window.itemModels.miniShield.clone();
+            break;
+            
+        case ITEM_TYPES.BIG_SHIELD:
+            itemModel = window.itemModels.bigShield.clone();
+            break;
+            
+        default:
+            console.error("Unknown item type for consumable");
+            return null;
+    }
+    
+    // Position the item
+    itemModel.position.copy(position);
+    
+    // Add metadata
+    itemModel.userData = {
+        type: "consumable",
+        itemType: itemType,
+        pickupable: true,
+        originalY: position.y,
+        animationId: null,
+        rotationSpeed: 0.01 + Math.random() * 0.01,
+        hoverSpeed: 0.5 + Math.random() * 0.5
+    };
+    
+    // Start hover and rotation animation
+    animateItem(itemModel);
+    
+    // Add to scene
+    scene.add(itemModel);
+    
+    return itemModel;
+}
+
+// Function to animate item hover and rotation
+function animateItem(item) {
+    // Cancel any existing animation
+    if (item.userData.animationId) {
+        cancelAnimationFrame(item.userData.animationId);
+    }
+    
+    // Animation function
+    function animate() {
+        // Rotation animation
+        item.rotation.y += item.userData.rotationSpeed;
+        
+        // Bobbing animation
+        const time = Date.now() * 0.001 * item.userData.hoverSpeed;
+        item.position.y = item.userData.originalY + Math.sin(time) * 0.1;
+        
+        // Continue animation
+        item.userData.animationId = requestAnimationFrame(animate);
+    }
+    
+    // Start animation loop
+    item.userData.animationId = requestAnimationFrame(animate);
+}
+
+// Add pickup animation before item is added to inventory
+function playItemPickupAnimation(item, onComplete) {
+    // Cancel hover animation
+    if (item.userData.animationId) {
+        cancelAnimationFrame(item.userData.animationId);
+        item.userData.animationId = null;
+    }
+    
+    // Animation parameters
+    const duration = 500; // milliseconds
+    const startPosition = item.position.clone();
+    const endPosition = player.position.clone();
+    endPosition.y = player.position.y + 1; // Float to eye level
+    
+    const startScale = new THREE.Vector3(1, 1, 1);
+    const endScale = new THREE.Vector3(0.2, 0.2, 0.2);
+    
+    const startRotationSpeed = item.userData.rotationSpeed;
+    const endRotationSpeed = startRotationSpeed * 5;
+    
+    const startTime = performance.now();
+    
+    // Pickup sound effect
+    // playSound('itemPickup');
+    
+    // Animation function
+    function animate() {
+        const now = performance.now();
+        const elapsed = now - startTime;
+        const progress = Math.min(elapsed / duration, 1);
+        
+        // Use easing function for smoother motion
+        const easedProgress = 1 - Math.pow(1 - progress, 3); // Cubic ease out
+        
+        // Update position - item moves toward player
+        item.position.lerpVectors(startPosition, endPosition, easedProgress);
+        
+        // Update scale - item shrinks as it approaches player
+        item.scale.lerpVectors(startScale, endScale, easedProgress);
+        
+        // Increase rotation speed
+        item.userData.rotationSpeed = startRotationSpeed + (endRotationSpeed - startRotationSpeed) * easedProgress;
+        item.rotation.y += item.userData.rotationSpeed;
+        
+        // Continue animation until complete
+        if (progress < 1) {
+            item.userData.animationId = requestAnimationFrame(animate);
+        } else {
+            // Animation complete
+            scene.remove(item);
+            if (onComplete) onComplete();
+        }
+    }
+    
+    // Start animation
+    item.userData.animationId = requestAnimationFrame(animate);
+}
+
+// Function to play item use animations
+function playItemUseAnimation(itemType) {
+    // Create an animation in front of the player/camera
+    const cameraPosition = new THREE.Vector3();
+    camera.getWorldPosition(cameraPosition);
+    
+    const cameraDirection = new THREE.Vector3();
+    camera.getWorldDirection(cameraDirection);
+    
+    // Position where the item will appear
+    const itemPosition = cameraPosition.clone().add(
+        cameraDirection.clone().multiplyScalar(0.5)
+    );
+    
+    // Create model based on item type
+    let itemModel;
+    
+    switch(itemType) {
+        case ITEM_TYPES.BANDAGE:
+            itemModel = window.itemModels.bandage.clone();
+            break;
+        case ITEM_TYPES.MEDKIT:
+            itemModel = window.itemModels.medkit.clone();
+            break;
+        case ITEM_TYPES.MINI_SHIELD:
+            itemModel = window.itemModels.miniShield.clone();
+            break;
+        case ITEM_TYPES.BIG_SHIELD:
+            itemModel = window.itemModels.bigShield.clone();
+            break;
+        default:
+            return; // Unknown item type
+    }
+    
+    // Position the model
+    itemModel.position.copy(itemPosition);
+    itemModel.scale.set(0.5, 0.5, 0.5); // Make it a bit smaller than world items
+    
+    // Look at camera (reverse direction)
+    itemModel.lookAt(cameraPosition);
+    
+    // Add to scene
+    scene.add(itemModel);
+    
+    // Animation parameters
+    const duration = 1000; // 1 second animation
+    const startScale = new THREE.Vector3(0.5, 0.5, 0.5);
+    const endScale = new THREE.Vector3(0, 0, 0); // Shrink to nothing
+    const startRotation = itemModel.rotation.clone();
+    const startTime = performance.now();
+    
+    // Play appropriate sound effect
+    switch(itemType) {
+        case ITEM_TYPES.BANDAGE:
+            // playSound('bandageUse');
+            break;
+        case ITEM_TYPES.MEDKIT:
+            // playSound('medkitUse');
+            break;
+        case ITEM_TYPES.MINI_SHIELD:
+        case ITEM_TYPES.BIG_SHIELD:
+            // playSound('shieldUse');
+            break;
+    }
+    
+    // Use animation differs based on item type
+    function animate() {
+        const now = performance.now();
+        const elapsed = now - startTime;
+        const progress = Math.min(elapsed / duration, 1);
+        
+        // Use different animations based on item type
+        switch(itemType) {
+            case ITEM_TYPES.BANDAGE:
+            case ITEM_TYPES.MEDKIT:
+                // Health items rise up and fade out
+                itemModel.position.y += 0.005;
+                itemModel.scale.lerpVectors(startScale, endScale, progress);
+                itemModel.rotation.y = startRotation.y + progress * Math.PI * 2;
+                break;
+                
+            case ITEM_TYPES.MINI_SHIELD:
+            case ITEM_TYPES.BIG_SHIELD:
+                // Shield potions tilt like drinking and then disappear
+                if (progress < 0.7) {
+                    // Tilt up as if drinking
+                    itemModel.rotation.x = startRotation.x - progress * Math.PI/2;
+                } else {
+                    // Then shrink away
+                    const shrinkProgress = (progress - 0.7) / 0.3; // Normalized from 0 to 1
+                    itemModel.scale.lerpVectors(startScale, endScale, shrinkProgress);
+                }
+                break;
+        }
+        
+        // Add particles based on item type
+        if (progress > 0.3 && Math.random() > 0.7) {
+            const particleGeometry = new THREE.SphereGeometry(0.02, 8, 8);
+            let particleMaterial;
+            
+            // Different particles for different items
+            if (itemType === ITEM_TYPES.BANDAGE || itemType === ITEM_TYPES.MEDKIT) {
+                // Green healing particles
+                particleMaterial = new THREE.MeshBasicMaterial({
+                    color: 0x00ff00,
+                    transparent: true,
+                    opacity: 0.7
+                });
+            } else {
+                // Blue shield particles
+                particleMaterial = new THREE.MeshBasicMaterial({
+                    color: 0x00aaff,
+                    transparent: true,
+                    opacity: 0.7
+                });
+            }
+            
+            const particle = new THREE.Mesh(particleGeometry, particleMaterial);
+            
+            // Position particle around the item
+            particle.position.copy(itemModel.position);
+            particle.position.x += (Math.random() - 0.5) * 0.2;
+            particle.position.y += (Math.random() - 0.5) * 0.2;
+            particle.position.z += (Math.random() - 0.5) * 0.2;
+            
+            // Add to scene
+            scene.add(particle);
+            
+            // Particle animation
+            const particleVelocity = new THREE.Vector3(
+                (Math.random() - 0.5) * 0.01,
+                Math.random() * 0.02,
+                (Math.random() - 0.5) * 0.01
+            );
+            
+            const particleStartTime = performance.now();
+            const particleLifetime = 500 + Math.random() * 500;
+            
+            function animateParticle() {
+                const particleNow = performance.now();
+                const particleElapsed = particleNow - particleStartTime;
+                const particleProgress = particleElapsed / particleLifetime;
+                
+                if (particleProgress >= 1) {
+                    scene.remove(particle);
+                    return;
+                }
+                
+                // Move particle up and fade out
+                particle.position.add(particleVelocity);
+                particle.material.opacity = 0.7 * (1 - particleProgress);
+                
+                requestAnimationFrame(animateParticle);
+            }
+            
+            requestAnimationFrame(animateParticle);
+        }
+        
+        if (progress < 1) {
+            requestAnimationFrame(animate);
+        } else {
+            // Remove the item when animation completes
+            scene.remove(itemModel);
+        }
+    }
+    
+    requestAnimationFrame(animate);
+}
+
+// Function to create and display held consumable item models
+function createHeldConsumableModel(itemType) {
+    // Remove any existing held consumable
+    if (heldConsumableModel) {
+        camera.remove(heldConsumableModel);
+        heldConsumableModel = null;
+    }
+    
+    // If models haven't been initialized, do that first
+    if (!window.itemModels) {
+        createItemModels();
+    }
+    
+    // Create appropriate model based on item type
+    switch(itemType) {
+        case ITEM_TYPES.BANDAGE:
+            heldConsumableModel = window.itemModels.bandage.clone();
+            break;
+        case ITEM_TYPES.MEDKIT:
+            heldConsumableModel = window.itemModels.medkit.clone();
+            break;
+        case ITEM_TYPES.MINI_SHIELD:
+            heldConsumableModel = window.itemModels.miniShield.clone();
+            break;
+        case ITEM_TYPES.BIG_SHIELD:
+            heldConsumableModel = window.itemModels.bigShield.clone();
+            break;
+        default:
+            return null; // Not a consumable item
+    }
+    
+    // Position and scale the model for first-person view
+    heldConsumableModel.position.copy(HELD_ITEM_POSITION);
+    heldConsumableModel.rotation.copy(HELD_ITEM_ROTATION);
+    
+    // Adjust specific positioning based on item type
+    switch(itemType) {
+        case ITEM_TYPES.BANDAGE:
+            // Adjust bandage position and rotation
+            heldConsumableModel.position.set(0.3, -0.35, -0.5);
+            heldConsumableModel.rotation.set(0, Math.PI, 0);
+            heldConsumableModel.scale.set(1.2, 1.2, 1.2);
+            break;
+            
+        case ITEM_TYPES.MEDKIT:
+            // Adjust medkit position and rotation
+            heldConsumableModel.position.set(0.35, -0.4, -0.5);
+            heldConsumableModel.rotation.set(0, Math.PI, 0);
+            heldConsumableModel.scale.set(0.8, 0.8, 0.8);
+            break;
+            
+        case ITEM_TYPES.MINI_SHIELD:
+            // Adjust mini shield position and rotation
+            heldConsumableModel.position.set(0.3, -0.4, -0.5);
+            heldConsumableModel.rotation.set(0, Math.PI, 0);
+            heldConsumableModel.scale.set(1.2, 1.2, 1.2);
+            break;
+            
+        case ITEM_TYPES.BIG_SHIELD:
+            // Adjust big shield position and rotation
+            heldConsumableModel.position.set(0.3, -0.35, -0.5);
+            heldConsumableModel.rotation.set(0, Math.PI, 0);
+            heldConsumableModel.scale.set(0.8, 0.8, 0.8);
+            break;
+    }
+    
+    // Add a dedicated light to make the item more visible
+    const itemLight = new THREE.PointLight(0xffffff, 1.0, 1);
+    itemLight.position.set(0, 0.5, -0.2);
+    heldConsumableModel.add(itemLight);
+    
+    // Add to camera
+    camera.add(heldConsumableModel);
+    console.log(`Created held model for ${getItemName(itemType)}`);
+    
+    return heldConsumableModel;
+}
+
+// Function to animate the held consumable item
+function animateHeldConsumable(itemType) {
+    if (!heldConsumableModel) return;
+    
+    // Store original position and rotation
+    const originalPosition = heldConsumableModel.position.clone();
+    const originalRotation = heldConsumableModel.rotation.clone();
+    
+    // Get full animation duration based on item type
+    const fullDuration = ITEM_USE_DURATIONS[itemType];
+    const startTime = performance.now();
+    
+    function animate() {
+        if (!usingItem || !heldConsumableModel) {
+            // Animation was canceled
+            return;
+        }
+        
+        const now = performance.now();
+        const elapsed = now - startTime;
+        const progress = Math.min(elapsed / fullDuration, 1);
+        
+        // Different animations based on item type
+        if (itemType === ITEM_TYPES.BANDAGE || itemType === ITEM_TYPES.MEDKIT) {
+            // Health items move up slightly and then down out of view
+            if (progress < 0.4) {
+                // Move up slightly (first 40% of animation)
+                heldConsumableModel.position.y = originalPosition.y + 0.1 * (progress / 0.4);
+            } else {
+                // Move down out of view (remaining 60%)
+                const downProgress = (progress - 0.4) / 0.6;
+                heldConsumableModel.position.y = originalPosition.y + 0.1 - (0.6 * downProgress);
+            }
+            
+            // Add gentle rotation throughout
+            heldConsumableModel.rotation.z = originalRotation.z + Math.sin(progress * Math.PI * 2) * 0.1;
+            
+        } else {
+            // Shield potions tilt BACKWARD toward player (changed direction)
+            // Start vertical (0) and tilt backward (positive X rotation)
+            heldConsumableModel.rotation.x = originalRotation.x + progress * Math.PI/3;
+            
+            // Move slightly up toward mouth
+            heldConsumableModel.position.y = originalPosition.y + 0.15 * progress;
+            
+            // Move slightly closer to player as it tilts
+            heldConsumableModel.position.z = originalPosition.z + 0.1 * progress;
+        }
+        
+        if (progress < 1 && usingItem) {
+            consumableAnimationId = requestAnimationFrame(animate);
+        } else if (progress >= 1) {
+            // Animation complete - position will be reset when item use completes
+            consumableAnimationId = null;
+        }
+    }
+    
+    consumableAnimationId = requestAnimationFrame(animate);
 }
 
 function createMountainsForMenu() {
@@ -1980,6 +3057,8 @@ document.getElementById('returnToMainButton').addEventListener('click', () => {
     // Reset game state
     isPaused = false;
     gameStarted = false;
+
+    resetGame();
     
     // Reset color selection
     selectedColor = null;
@@ -1996,6 +3075,8 @@ document.getElementById('returnToMainButton').addEventListener('click', () => {
     // Hide game elements
     document.getElementById('pauseMenu').style.display = 'none';
     document.getElementById('gameScene').style.display = 'none';
+
+    document.getElementById('roundInfo').style.display = 'none';
     
     // Clean up UI elements
     cleanupGameUI();
@@ -2034,8 +3115,16 @@ document.getElementById('controlsButtonPause').addEventListener('click', () => {
     controlsAccessedFrom = 'pause';
     document.getElementById('pauseMenu').style.display = 'none';
     document.getElementById('controlsMenu').style.display = 'block';
+    
     // Keep HUD hidden when in controls
     document.getElementById('hud').style.display = 'none';
+    
+    // Fade the round information
+    const roundInfo = document.getElementById('roundInfo');
+    if (roundInfo) {
+        roundInfo.style.opacity = '0.2';
+        roundInfo.style.pointerEvents = 'none'; // Prevent interaction with the round info
+    }
 });
 
 // Add this function to help debug knife issues
@@ -2533,6 +3622,13 @@ function bossSpecialAttack(boss) {
     animateShockwave();
 }
 
+const ITEM_USE_DURATIONS = {
+    [ITEM_TYPES.BANDAGE]: 3500,     // 3.5 seconds for bandages
+    [ITEM_TYPES.MEDKIT]: 9000,      // 9 seconds for medkit
+    [ITEM_TYPES.MINI_SHIELD]: 2000, // 2 seconds for mini shield
+    [ITEM_TYPES.BIG_SHIELD]: 4000   // 4 seconds for big shield
+};
+
 // Function to attack player
 function attackPlayer(enemy) {
     // Play attack animation or visual effect
@@ -2711,12 +3807,22 @@ function defeatEnemy(enemy) {
             break;
     }
 
+    // Make sure to update the coin display immediately
     updateCoinDisplay();
+    
+    // Make sure to log the coin value for debugging
+    console.log("Player coins: " + playerCoins);
     
     // Remove from activeEnemies array
     const index = activeEnemies.indexOf(enemy);
     if (index !== -1) {
         activeEnemies.splice(index, 1);
+    }
+    
+    // Also remove from master enemies array
+    const masterIndex = enemies.indexOf(enemy);
+    if (masterIndex !== -1) {
+        enemies.splice(masterIndex, 1);
     }
     
     // Update enemies remaining count
@@ -2853,9 +3959,21 @@ function showNotification(message, duration = 3000) {
     }, duration);
 }
 
-// Updated handlePlayerDeath function to hide crosshair
+// Update the handlePlayerDeath function to close shop and inventory
 function handlePlayerDeath() {
     isGameOver = true;
+    
+    // Close shop if it's open
+    if (isShopOpen) {
+        isShopOpen = false;
+        document.getElementById('shop').style.display = 'none';
+    }
+    
+    // Close inventory if it's open
+    if (isInventoryOpen) {
+        isInventoryOpen = false;
+        document.getElementById('inventory').style.display = 'none';
+    }
     
     // Make sure to exit pointer lock
     if (document.pointerLockElement) {
@@ -2864,7 +3982,7 @@ function handlePlayerDeath() {
     
     // Hide HUD elements and crosshair
     document.getElementById('hud').style.display = 'none';
-    hideCrosshair(); // Add this line to hide crosshair
+    hideCrosshair(); 
     
     // Show game over message
     showNotification("You have been defeated!", 2500);
@@ -2944,7 +4062,7 @@ function showVictoryScreen() {
     document.exitPointerLock();
 }
 
-// Add this function to properly remove UI elements when returning to menu
+// Improve the cleanupGameUI function to handle all menus
 function cleanupGameUI() {
     // Remove crosshair
     const crosshair = document.getElementById('crosshair');
@@ -2957,29 +4075,54 @@ function cleanupGameUI() {
     if (ammoContainer) {
         ammoContainer.remove();
     }
+    
+    // Also remove coin container
+    const coinContainer = document.getElementById('coinContainer');
+    if (coinContainer) {
+        coinContainer.remove();
+    }
+    
+    // Make sure shop is closed and hidden
+    isShopOpen = false;
+    document.getElementById('shop').style.display = 'none';
+    
+    // Make sure inventory is closed and hidden
+    isInventoryOpen = false;
+    document.getElementById('inventory').style.display = 'none';
 }
 
 // Function to reset game state
 function resetGame() {
-    // Clean up enemies
-    for (const enemy of enemies) {
-        scene.remove(enemy);
+    // Clean up ALL enemies (not just activeEnemies)
+    for (let i = 0; i < enemies.length; i++) {
+        if (enemies[i] && enemies[i].parent) {
+            scene.remove(enemies[i]);
+        }
     }
     
     // Clean up projectiles
     for (const projectile of projectiles) {
-        scene.remove(projectile);
+        if (projectile && projectile.parent) {
+            scene.remove(projectile);
+        }
     }
     
     // Clean up bullets
     for (const bullet of bullets) {
-        scene.remove(bullet);
+        if (bullet && bullet.parent) {
+            scene.remove(bullet);
+        }
     }
-    bullets = [];
+    
+    // Clear all arrays
+    enemies = [];
+    activeEnemies = [];
+    projectiles.length = 0;
+    bullets.length = 0;
     
     // Remove player from scene if it exists
     if (player) {
-        // Make sure to remove weapon models from camera first to prevent memory leaks
+        // Make sure to remove weapon models from camera first
         if (knifeModel) {
             camera.remove(knifeModel);
             knifeModel = null;
@@ -2988,17 +4131,18 @@ function resetGame() {
             camera.remove(pistolModel);
             pistolModel = null;
         }
+        if (heldConsumableModel) {
+            camera.remove(heldConsumableModel);
+            heldConsumableModel = null;
+        }
         scene.remove(player);
-        player = null; // Clear the reference so a new player can be created
+        player = null; 
     }
     
     // Clean up UI elements
     cleanupGameUI();
     
     // Reset game state
-    enemies = [];
-    activeEnemies = [];
-    projectiles.length = 0;
     isRoundActive = false;
     isGameOver = false;
     currentRound = 0;
@@ -3011,18 +4155,39 @@ function resetGame() {
     // Reset weapon stats
     pistolAmmo = pistolMaxAmmo;
     pistolReloading = false;
+    
+    // Clear any running countdown
+    if (countdownInterval) {
+        clearInterval(countdownInterval);
+        countdownInterval = null;
+    }
+    
+    // Make sure coin system is reset
+    infiniteMoneyCheat = false;
+    if (originalCoinColor) {
+        const coinDisplay = document.getElementById('coinDisplay');
+        if (coinDisplay) {
+            coinDisplay.style.color = originalCoinColor;
+        }
+    }
 }
 
 // Function to create the coin display in the HUD
 function createCoinDisplay() {
     const hud = document.getElementById('hud');
     
+    // IMPORTANT: Remove any existing coin container first
+    const existingCoinContainer = document.getElementById('coinContainer');
+    if (existingCoinContainer) {
+        existingCoinContainer.remove();
+    }
+    
     // Create coin container
     const coinContainer = document.createElement('div');
     coinContainer.id = 'coinContainer';
     coinContainer.style.position = 'absolute';
-    coinContainer.style.bottom = '80px'; // Position above the item bar
-    coinContainer.style.right = '20px'; // Changed from left to right
+    coinContainer.style.bottom = '80px'; 
+    coinContainer.style.right = '20px';
     coinContainer.style.backgroundColor = 'rgba(0, 0, 0, 0.5)';
     coinContainer.style.padding = '8px 12px';
     coinContainer.style.borderRadius = '5px';
@@ -3041,7 +4206,7 @@ function createCoinDisplay() {
     coinDisplay.style.color = 'gold';
     coinDisplay.style.fontSize = '18px';
     coinDisplay.style.fontWeight = 'bold';
-    coinDisplay.textContent = '0';
+    coinDisplay.textContent = playerCoins.toString();
     
     // Assemble the container
     coinContainer.appendChild(coinIcon);
