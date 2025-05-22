@@ -59,7 +59,7 @@ let knifeAnimationId = null;
 
 // Add these global variables for the round system
 let currentRound = 0;
-let totalRounds = 5;
+let totalRounds = 20;
 let enemies = [];
 let activeEnemies = [];
 let isRoundActive = false;
@@ -85,7 +85,16 @@ const ENEMY_TYPES = {
     NORMAL: 'normal',
     TANK: 'tank',
     RANGED: 'ranged',
-    BOSS: 'boss'
+    SPEEDER: 'speeder',
+    EXPLODER: 'exploder', 
+    SHIELDER: 'shielder',
+    TELEPORTER: 'teleporter',
+    HEALER: 'healer',
+    ELITE: 'elite',
+    BOSS: 'boss', // Round 5 boss
+    WARDEN_BOSS: 'warden_boss',   // Round 10 boss
+    PHANTOM_BOSS: 'phantom_boss',  // Round 15 boss
+    MEGA_BOSS: 'mega_boss'         // Round 20 boss
 };
 
 // First, add weapon type constants at the top of your file
@@ -163,6 +172,7 @@ function shuffleArray(array) {
 
 // Adjust enemy spawn delays to be more consistent and faster
 const enemyConfigs = {
+    // Existing enemy types
     [ENEMY_TYPES.NORMAL]: {
         health: 40,
         speed: 0.05,
@@ -171,7 +181,7 @@ const enemyConfigs = {
         color: 0xff0000,
         attackRange: 2,
         attackCooldown: 1000,
-        spawnDelay: 500 // Reduced from 500
+        spawnDelay: 500
     },
     [ENEMY_TYPES.TANK]: {
         health: 150,
@@ -181,7 +191,7 @@ const enemyConfigs = {
         color: 0x990000,
         attackRange: 2.5,
         attackCooldown: 2000,
-        spawnDelay: 1500 // Reduced from 1500
+        spawnDelay: 1500
     },
     [ENEMY_TYPES.RANGED]: {
         health: 60,
@@ -192,8 +202,84 @@ const enemyConfigs = {
         attackRange: 15,
         attackCooldown: 2000,
         projectileSpeed: 0.3,
-        spawnDelay: 1000 // Reduced from 1000
+        spawnDelay: 1000
     },
+    
+    // New enemy types
+    [ENEMY_TYPES.SPEEDER]: {
+        health: 30,
+        speed: 0.1, // 2x normal speed
+        damage: 8,
+        size: { width: 0.6, height: 1.4, depth: 0.6 },
+        color: 0xff3333,
+        attackRange: 1.8,
+        attackCooldown: 800,
+        spawnDelay: 800,
+        circleStrafe: true // Special behavior flag
+    },
+    [ENEMY_TYPES.EXPLODER]: {
+        health: 60,
+        speed: 0.06,
+        damage: 40, // High damage on explosion
+        size: { width: 1.0, height: 1.6, depth: 1.0 },
+        color: 0xffaa00,
+        attackRange: 3, // Explosion radius
+        attackCooldown: 1000,
+        spawnDelay: 1200,
+        explodeOnDeath: true,
+        pulseRate: 0.5 // For visual effects
+    },
+    [ENEMY_TYPES.SHIELDER]: {
+        health: 80,
+        speed: 0.03,
+        damage: 15,
+        size: { width: 1.2, height: 2.0, depth: 0.8 },
+        color: 0x0088ff,
+        attackRange: 2.2,
+        attackCooldown: 1500,
+        spawnDelay: 1800,
+        frontShield: true,
+        shieldReduction: 0.8 // Reduces incoming damage by 80% from front
+    },
+    [ENEMY_TYPES.TELEPORTER]: {
+        health: 50,
+        speed: 0.05,
+        damage: 12,
+        size: { width: 0.8, height: 1.8, depth: 0.8 },
+        color: 0x8800ff,
+        attackRange: 10,
+        attackCooldown: 1800,
+        spawnDelay: 1500,
+        teleportDistance: 10,
+        teleportCooldown: 5000,
+        projectileSpeed: 0.4
+    },
+    [ENEMY_TYPES.HEALER]: {
+        health: 40,
+        speed: 0.03,
+        damage: 0, // No direct damage
+        size: { width: 0.8, height: 1.8, depth: 0.8 },
+        color: 0x00ff44,
+        attackRange: 0, // Doesn't attack player
+        healRange: 8, // Range to heal allies
+        healAmount: 1, // HP healed per tick
+        healCooldown: 500,
+        spawnDelay: 2000
+    },
+    [ENEMY_TYPES.ELITE]: {
+        health: 120,
+        speed: 0.06,
+        damage: 18,
+        size: { width: 1.2, height: 2.2, depth: 1.2 },
+        color: 0xffcc00,
+        attackRange: 3,
+        attackCooldown: 1000,
+        spawnDelay: 2500,
+        specialAttackCooldown: 5000,
+        eliteType: null // Assigned randomly on spawn
+    },
+    
+    // Boss enemy types
     [ENEMY_TYPES.BOSS]: {
         health: 500,
         speed: 0.04,
@@ -203,41 +289,279 @@ const enemyConfigs = {
         attackRange: 3,
         attackCooldown: 3000,
         specialAttackCooldown: 10000,
-        spawnDelay: 3000 // Reduced from 3000
+        spawnDelay: 3000
+    },
+    [ENEMY_TYPES.WARDEN_BOSS]: {
+        health: 800,
+        speed: 0.035,
+        damage: 35,
+        size: { width: 3, height: 4.5, depth: 3 },
+        color: 0x990000,
+        attackRange: 3.5,
+        attackCooldown: 3500,
+        spawnDelay: 0,
+        
+        // Special abilities
+        shieldWallCooldown: 8000,  // Shield wall cooldown
+        shieldWallDuration: 4000,  // How long shield wall lasts
+        shieldActive: false,      // Whether shield is currently active
+        
+        groundSlamCooldown: 12000, // Ground slam cooldown
+        groundSlamRange: 10,      // Ground slam effect range
+        groundSlamDamage: 40,     // Ground slam damage
+        
+        summonCooldown: 20000,    // Summon minions cooldown
+        summonCount: 3           // Number of minions to summon
+    },
+    [ENEMY_TYPES.PHANTOM_BOSS]: {
+        health: 1200,
+        speed: 0.06,
+        damage: 30,
+        size: { width: 2.5, height: 4, depth: 2.5 },
+        color: 0x8800cc,
+        attackRange: 4,
+        attackCooldown: 3000,
+        spawnDelay: 0,
+        
+        // Special abilities
+        teleportCooldown: 5000,   // Teleport strike cooldown
+        teleportRange: 15,        // How far it can teleport
+        
+        cloneCooldown: 15000,     // Shadow clone cooldown
+        cloneCount: 4,            // Number of clones created
+        cloneDuration: 10000,     // How long clones last
+        
+        voidZoneCooldown: 10000,  // Void zone cooldown
+        voidZoneCount: 3,         // Number of void zones created
+        voidZoneDuration: 7000,   // How long void zones last
+        voidZoneDamage: 5,        // Damage per second from void zones
+        
+        phaseShiftCooldown: 25000, // Phase shift cooldown
+        phaseDuration: 5000,       // How long the immune phase lasts
+        phaseActive: false         // Whether currently phased
+    },
+    [ENEMY_TYPES.MEGA_BOSS]: {
+        health: 2500,
+        speed: 0.05, // Variable depending on phase
+        damage: 40,
+        size: { width: 4, height: 6, depth: 4 },
+        color: 0x222222, // Color changes based on phase
+        attackRange: 4,
+        attackCooldown: 2500,
+        spawnDelay: 0,
+        
+        // Phases
+        currentPhase: 1,
+        phaseThresholds: [0.66, 0.33], // At 66% and 33% health
+        
+        // Warden abilities
+        shieldWallCooldown: 10000,
+        shieldWallDuration: 3000,
+        shieldActive: false,
+        
+        groundSlamCooldown: 15000,
+        groundSlamRange: 12,
+        groundSlamDamage: 45,
+        
+        summonCooldown: 25000,
+        summonCount: 2,
+        
+        // Phantom abilities
+        teleportCooldown: 6000,
+        teleportRange: 15,
+        
+        cloneCooldown: 18000,
+        cloneCount: 3,
+        cloneDuration: 8000,
+        
+        voidZoneCooldown: 12000,
+        voidZoneCount: 2,
+        voidZoneDuration: 6000,
+        voidZoneDamage: 8,
+        
+        // Ultimate abilities (Phase 3)
+        deathRayCooldown: 30000,
+        deathRayDamage: 60,
+        deathRayDuration: 5000,
+        
+        meteorCooldown: 20000,
+        meteorCount: 8,
+        meteorDamage: 25,
+        
+        realityWarpCooldown: 45000,
+        realityWarpDuration: 8000
     }
 };
 
 // Round configurations
 const roundConfigs = [
-    { // Round 1
+    { // Round 1 - Tutorial
         normal: 10,
         tank: 0,
         ranged: 0,
         boss: 0
     },
     { // Round 2
-        normal: 20,
+        normal: 15,
         tank: 0,
         ranged: 0,
         boss: 0
     },
     { // Round 3
-        normal: 25,
+        normal: 15,
         tank: 2,
         ranged: 0,
         boss: 0
     },
     { // Round 4
-        normal: 25,
-        tank: 2,
-        ranged: 5,
+        normal: 12,
+        tank: 3,
+        ranged: 3,
         boss: 0
     },
     { // Round 5
-        normal: 22,
+        normal: 15,
+        tank: 4,
+        ranged: 5,
+        boss: 1,
+        speeder: 2
+    },
+    { // Round 6
+        normal: 10,
         tank: 5,
+        ranged: 5,
+        boss: 0,
+        speeder: 5
+    },
+    { // Round 7
+        normal: 15,
+        tank: 5,
+        ranged: 5,
+        exploder: 3,
+        speeder: 5
+    },
+    { // Round 8
+        normal: 15,
+        tank: 6,
+        ranged: 6, 
+        exploder: 4,
+        speeder: 6,
+        shielder: 2
+    },
+    { // Round 9
+        normal: 20,
+        tank: 8,
+        ranged: 8,
+        exploder: 5,
+        speeder: 8,
+        shielder: 4,
+        teleporter: 3
+    },
+    { // Round 10 - WARDEN BOSS ROUND
+        normal: 10,
+        tank: 3,
+        ranged: 3,
+        warden_boss: 1
+    },
+    { // Round 11
+        normal: 20,
+        tank: 10,
         ranged: 10,
-        boss: 1
+        exploder: 8,
+        speeder: 10,
+        shielder: 6,
+        teleporter: 5
+    },
+    { // Round 12
+        normal: 25,
+        tank: 12,
+        ranged: 12,
+        exploder: 10,
+        speeder: 12,
+        shielder: 8, 
+        teleporter: 6,
+        healer: 3
+    },
+    { // Round 13
+        normal: 20,
+        tank: 10,
+        ranged: 10,
+        exploder: 12,
+        speeder: 15,
+        shielder: 10,
+        teleporter: 8, 
+        healer: 5,
+        elite: 2
+    },
+    { // Round 14
+        normal: 25,
+        tank: 15,
+        ranged: 15,
+        exploder: 15,
+        speeder: 15,
+        shielder: 12,
+        teleporter: 10,
+        healer: 8,
+        elite: 5
+    },
+    { // Round 15 - PHANTOM BOSS ROUND
+        tank: 5,
+        ranged: 5,
+        exploder: 5,
+        speeder: 5,
+        phantom_boss: 1
+    },
+    { // Round 16
+        normal: 30,
+        tank: 18,
+        ranged: 18,
+        exploder: 18,
+        speeder: 18,
+        shielder: 15,
+        teleporter: 12,
+        healer: 10,
+        elite: 8
+    },
+    { // Round 17
+        normal: 35,
+        tank: 20,
+        ranged: 20,
+        exploder: 20,
+        speeder: 20,
+        shielder: 18,
+        teleporter: 15,
+        healer: 12,
+        elite: 10
+    },
+    { // Round 18
+        normal: 40,
+        tank: 22,
+        ranged: 22,
+        exploder: 22,
+        speeder: 22,
+        shielder: 20,
+        teleporter: 18,
+        healer: 15,
+        elite: 12
+    },
+    { // Round 19
+        normal: 45,
+        tank: 25,
+        ranged: 25,
+        exploder: 25,
+        speeder: 25,
+        shielder: 22,
+        teleporter: 20,
+        healer: 18,
+        elite: 15
+    },
+    { // Round 20 - MEGA BOSS ROUND
+        normal: 10,
+        tank: 5,
+        ranged: 5,
+        exploder: 5,
+        speeder: 5,
+        mega_boss: 1
     }
 ];
 
@@ -3237,31 +3561,60 @@ function startNextRound() {
 function spawnEnemiesForRound(config) {
     let spawnQueue = [];
     
-    // Add normal enemies to spawn queue
-    for (let i = 0; i < config.normal; i++) {
-        spawnQueue.push(ENEMY_TYPES.NORMAL);
+    // Add all enemy types from the config to the spawn queue
+    for (const enemyType in config) {
+        if (config.hasOwnProperty(enemyType) && config[enemyType] > 0) {
+            // Translate from config key to ENEMY_TYPES constant
+            let enemyTypeKey = enemyType.toUpperCase();
+            
+            // Special handling for boss types
+            if (enemyType === 'warden_boss') {
+                for (let i = 0; i < config[enemyType]; i++) {
+                    spawnQueue.push(ENEMY_TYPES.WARDEN_BOSS);
+                }
+            } 
+            else if (enemyType === 'phantom_boss') {
+                for (let i = 0; i < config[enemyType]; i++) {
+                    spawnQueue.push(ENEMY_TYPES.PHANTOM_BOSS);
+                }
+            }
+            else if (enemyType === 'mega_boss') {
+                for (let i = 0; i < config[enemyType]; i++) {
+                    spawnQueue.push(ENEMY_TYPES.MEGA_BOSS);
+                }
+            }
+            else if (ENEMY_TYPES[enemyTypeKey]) {
+                for (let i = 0; i < config[enemyType]; i++) {
+                    spawnQueue.push(ENEMY_TYPES[enemyTypeKey]);
+                }
+            }
+        }
     }
     
-    // Add tank enemies to spawn queue
-    for (let i = 0; i < config.tank; i++) {
-        spawnQueue.push(ENEMY_TYPES.TANK);
-    }
+    // Bosses should spawn last
+    const bosses = spawnQueue.filter(type => 
+        type === ENEMY_TYPES.WARDEN_BOSS || 
+        type === ENEMY_TYPES.PHANTOM_BOSS || 
+        type === ENEMY_TYPES.MEGA_BOSS || 
+        type === ENEMY_TYPES.BOSS
+    );
     
-    // Add ranged enemies to spawn queue
-    for (let i = 0; i < config.ranged; i++) {
-        spawnQueue.push(ENEMY_TYPES.RANGED);
-    }
+    // Regular enemies spawn first (shuffled)
+    const regularEnemies = spawnQueue.filter(type => 
+        type !== ENEMY_TYPES.WARDEN_BOSS && 
+        type !== ENEMY_TYPES.PHANTOM_BOSS && 
+        type !== ENEMY_TYPES.MEGA_BOSS && 
+        type !== ENEMY_TYPES.BOSS
+    );
     
-    // Add boss enemies to spawn queue
-    for (let i = 0; i < config.boss; i++) {
-        spawnQueue.push(ENEMY_TYPES.BOSS);
-    }
+    // Shuffle only the regular enemies
+    const shuffledRegularEnemies = shuffleArray(regularEnemies);
     
-    // Shuffle spawn queue for randomness
-    spawnQueue = shuffleArray(spawnQueue);
+    // Combine: regular enemies first, then bosses
+    const finalSpawnQueue = [...shuffledRegularEnemies, ...bosses];
     
     // Start spawning enemies from queue
-    spawnEnemiesFromQueue(spawnQueue);
+    spawnEnemiesFromQueue(finalSpawnQueue);
 }
 
 // Function to spawn enemies from queue with delays
@@ -3284,13 +3637,27 @@ function spawnEnemiesFromQueue(queue) {
 function spawnEnemy(enemyType) {
     const config = enemyConfigs[enemyType];
     
-    // Create enemy mesh
+    // Special creation for boss enemies
+    if (enemyType === ENEMY_TYPES.WARDEN_BOSS) {
+        return spawnWardenBoss(config);
+    } 
+    else if (enemyType === ENEMY_TYPES.PHANTOM_BOSS) {
+        return spawnPhantomBoss(config);
+    }
+    else if (enemyType === ENEMY_TYPES.MEGA_BOSS) {
+        return spawnMegaBoss(config);
+    }
+    
+    // Create enemy mesh for standard enemy types
     const geometry = new THREE.BoxGeometry(
         config.size.width,
         config.size.height,
         config.size.depth
     );
-    const material = new THREE.MeshPhongMaterial({ color: config.color });
+    const material = new THREE.MeshPhongMaterial({ 
+        color: config.color,
+        emissive: 0x000000
+    });
     const enemy = new THREE.Mesh(geometry, material);
     
     // Position enemy at a random location on the edge of the map
@@ -3313,11 +3680,57 @@ function spawnEnemy(enemyType) {
     };
     
     // Add special properties based on enemy type
-    if (enemyType === ENEMY_TYPES.RANGED) {
+    if (enemyType === ENEMY_TYPES.RANGED || enemyType === ENEMY_TYPES.TELEPORTER) {
         enemy.userData.projectileSpeed = config.projectileSpeed;
     }
     
-    if (enemyType === ENEMY_TYPES.BOSS) {
+    if (enemyType === ENEMY_TYPES.SPEEDER) {
+        enemy.userData.circleStrafe = config.circleStrafe;
+        enemy.userData.strafeDirection = Math.random() > 0.5 ? 1 : -1;
+        enemy.userData.strafeAngle = 0;
+    }
+    
+    if (enemyType === ENEMY_TYPES.EXPLODER) {
+        enemy.userData.explodeOnDeath = config.explodeOnDeath;
+        enemy.userData.pulseRate = config.pulseRate;
+        
+        // Start pulsing animation
+        startPulsingAnimation(enemy);
+    }
+    
+    if (enemyType === ENEMY_TYPES.SHIELDER) {
+        enemy.userData.frontShield = config.frontShield;
+        enemy.userData.shieldReduction = config.shieldReduction;
+        
+        // Create visual shield
+        addShieldToEnemy(enemy);
+    }
+    
+    if (enemyType === ENEMY_TYPES.TELEPORTER) {
+        enemy.userData.teleportDistance = config.teleportDistance;
+        enemy.userData.teleportCooldown = config.teleportCooldown;
+        enemy.userData.lastTeleportTime = 0;
+    }
+    
+    if (enemyType === ENEMY_TYPES.HEALER) {
+        enemy.userData.healRange = config.healRange;
+        enemy.userData.healAmount = config.healAmount;
+        enemy.userData.healCooldown = config.healCooldown;
+        enemy.userData.lastHealTime = 0;
+        
+        // Create heal aura visual
+        addHealAuraToEnemy(enemy);
+    }
+    
+    if (enemyType === ENEMY_TYPES.ELITE) {
+        // Randomly select an elite type
+        const eliteTypes = ['speed', 'damage', 'health', 'range'];
+        enemy.userData.eliteType = eliteTypes[Math.floor(Math.random() * eliteTypes.length)];
+        
+        // Apply elite modifiers
+        applyEliteModifiers(enemy);
+        
+        // Add special attack cooldown
         enemy.userData.specialAttackCooldown = config.specialAttackCooldown;
         enemy.userData.lastSpecialAttackTime = 0;
     }
@@ -3326,6 +3739,8 @@ function spawnEnemy(enemyType) {
     scene.add(enemy);
     enemies.push(enemy);
     activeEnemies.push(enemy);
+    
+    return enemy;
 }
 
 // Function to update enemies
@@ -3347,75 +3762,74 @@ function updateEnemies() {
         const distanceToPlayer = directionToPlayer.length();
         directionToPlayer.normalize();
         
-        // Enemy behavior based on type
+        // Update enemy based on type
         switch (enemy.userData.type) {
             case ENEMY_TYPES.NORMAL:
-                // Move towards player if not in attack range
-                if (distanceToPlayer > enemy.userData.attackRange) {
-                    moveEnemy(enemy, directionToPlayer);
-                } else {
-                    // Attack player if cooldown expired
-                    if (now - enemy.userData.lastAttackTime >= enemy.userData.attackCooldown) {
-                        attackPlayer(enemy);
-                        enemy.userData.lastAttackTime = now;
-                    }
-                }
-                break;
-                
             case ENEMY_TYPES.TANK:
-                // Move towards player if not in attack range
-                if (distanceToPlayer > enemy.userData.attackRange) {
-                    moveEnemy(enemy, directionToPlayer);
-                } else {
-                    // Attack player if cooldown expired
-                    if (now - enemy.userData.lastAttackTime >= enemy.userData.attackCooldown) {
-                        attackPlayer(enemy);
-                        enemy.userData.lastAttackTime = now;
-                    }
-                }
+                // Basic enemy behavior - approach and attack
+                handleBasicEnemy(enemy, directionToPlayer, distanceToPlayer, now);
                 break;
                 
             case ENEMY_TYPES.RANGED:
-                // Keep distance from player
-                const optimalRange = enemy.userData.attackRange * 0.7;
+                // Ranged enemy behavior
+                handleRangedEnemy(enemy, directionToPlayer, distanceToPlayer, now);
+                break;
                 
-                if (distanceToPlayer < optimalRange - 2) {
-                    // Too close, move away
-                    moveEnemy(enemy, directionToPlayer.clone().negate());
-                } else if (distanceToPlayer > optimalRange + 2) {
-                    // Too far, move closer
-                    moveEnemy(enemy, directionToPlayer);
-                } else {
-                    // In range, attack if cooldown expired
-                    if (now - enemy.userData.lastAttackTime >= enemy.userData.attackCooldown) {
-                        fireProjectile(enemy, directionToPlayer);
-                        enemy.userData.lastAttackTime = now;
-                    }
-                }
+            case ENEMY_TYPES.SPEEDER:
+                // Speeder enemy circle-strafes around player
+                handleSpeederEnemy(enemy, directionToPlayer, distanceToPlayer, now);
+                break;
+                
+            case ENEMY_TYPES.EXPLODER:
+                // Exploder rushes at player and explodes
+                handleExploderEnemy(enemy, directionToPlayer, distanceToPlayer, now);
+                break;
+                
+            case ENEMY_TYPES.SHIELDER:
+                // Shielder protects with frontal shield
+                handleShielderEnemy(enemy, directionToPlayer, distanceToPlayer, now);
+                break;
+                
+            case ENEMY_TYPES.TELEPORTER:
+                // Teleporter attacks from different positions
+                handleTeleporterEnemy(enemy, directionToPlayer, distanceToPlayer, now);
+                break;
+                
+            case ENEMY_TYPES.HEALER:
+                // Healer stays back and heals allies
+                handleHealerEnemy(enemy, now);
+                break;
+                
+            case ENEMY_TYPES.ELITE:
+                // Elite has enhanced abilities
+                handleEliteEnemy(enemy, directionToPlayer, distanceToPlayer, now);
                 break;
                 
             case ENEMY_TYPES.BOSS:
-                // Move towards player if not in attack range
-                if (distanceToPlayer > enemy.userData.attackRange) {
-                    moveEnemy(enemy, directionToPlayer);
-                } else {
-                    // Regular attack if cooldown expired
-                    if (now - enemy.userData.lastAttackTime >= enemy.userData.attackCooldown) {
-                        attackPlayer(enemy);
-                        enemy.userData.lastAttackTime = now;
-                    }
-                    
-                    // Special attack if cooldown expired
-                    if (now - enemy.userData.lastSpecialAttackTime >= enemy.userData.specialAttackCooldown) {
-                        bossSpecialAttack(enemy);
-                        enemy.userData.lastSpecialAttackTime = now;
-                    }
-                }
+                // Standard boss behavior
+                handleBossEnemy(enemy, directionToPlayer, distanceToPlayer, now);
+                break;
+                
+            case ENEMY_TYPES.WARDEN_BOSS:
+                // Round 10 boss - The Warden
+                handleWardenBoss(enemy, directionToPlayer, distanceToPlayer, now);
+                break;
+                
+            case ENEMY_TYPES.PHANTOM_BOSS:
+                // Round 15 boss - The Phantom
+                handlePhantomBoss(enemy, directionToPlayer, distanceToPlayer, now);
+                break;
+                
+            case ENEMY_TYPES.MEGA_BOSS:
+                // Round 20 boss - The Overlord
+                handleMegaBoss(enemy, directionToPlayer, distanceToPlayer, now);
                 break;
         }
         
-        // Make enemy face player
-        enemy.lookAt(player.position);
+        // Make enemy face player (except for shielders who always face player)
+        if (enemy.userData.type !== ENEMY_TYPES.SHIELDER) {
+            enemy.lookAt(player.position);
+        }
     }
     
     // Update projectiles
@@ -3425,6 +3839,2126 @@ function updateEnemies() {
     if (activeEnemies.length === 0 && isRoundActive) {
         endRound();
     }
+}
+
+// Add new handler functions for each enemy type
+function handleBasicEnemy(enemy, directionToPlayer, distanceToPlayer, now) {
+    // Move towards player if not in attack range
+    if (distanceToPlayer > enemy.userData.attackRange) {
+        moveEnemy(enemy, directionToPlayer);
+    } else {
+        // Attack player if cooldown expired
+        if (now - enemy.userData.lastAttackTime >= enemy.userData.attackCooldown) {
+            attackPlayer(enemy);
+            enemy.userData.lastAttackTime = now;
+        }
+    }
+}
+
+function handleRangedEnemy(enemy, directionToPlayer, distanceToPlayer, now) {
+    // Keep distance from player
+    const optimalRange = enemy.userData.attackRange * 0.7;
+    
+    if (distanceToPlayer < optimalRange - 2) {
+        // Too close, move away
+        moveEnemy(enemy, directionToPlayer.clone().negate());
+    } else if (distanceToPlayer > optimalRange + 2) {
+        // Too far, move closer
+        moveEnemy(enemy, directionToPlayer);
+    } else {
+        // In range, attack if cooldown expired
+        if (now - enemy.userData.lastAttackTime >= enemy.userData.attackCooldown) {
+            fireProjectile(enemy, directionToPlayer);
+            enemy.userData.lastAttackTime = now;
+        }
+    }
+}
+
+function handleSpeederEnemy(enemy, directionToPlayer, distanceToPlayer, now) {
+    // Circle strafe around player
+    if (distanceToPlayer > enemy.userData.attackRange * 1.5) {
+        // Too far, approach player
+        moveEnemy(enemy, directionToPlayer);
+    } else if (distanceToPlayer < enemy.userData.attackRange * 0.8) {
+        // Too close, back up
+        moveEnemy(enemy, directionToPlayer.clone().negate());
+    } else {
+        // At good distance, circle around player
+        const strafeDirection = new THREE.Vector3(
+            -directionToPlayer.z * enemy.userData.strafeDirection,
+            0,
+            directionToPlayer.x * enemy.userData.strafeDirection
+        ).normalize();
+        
+        moveEnemy(enemy, strafeDirection);
+        
+        // Attack if in range and cooldown expired
+        if (distanceToPlayer <= enemy.userData.attackRange &&
+            now - enemy.userData.lastAttackTime >= enemy.userData.attackCooldown) {
+            attackPlayer(enemy);
+            enemy.userData.lastAttackTime = now;
+            
+            // Occasionally change strafe direction
+            if (Math.random() < 0.1) {
+                enemy.userData.strafeDirection *= -1;
+            }
+        }
+    }
+}
+
+function handleExploderEnemy(enemy, directionToPlayer, distanceToPlayer, now) {
+    // Rush directly at player to explode
+    moveEnemy(enemy, directionToPlayer);
+    
+    // If close enough, explode
+    if (distanceToPlayer < enemy.userData.attackRange) {
+        // Create explosion effect
+        createExplosion(enemy.position, enemy.userData.attackRange, enemy.userData.damage);
+        
+        // Remove exploder after explosion
+        defeatEnemy(enemy);
+    }
+}
+
+function handleShielderEnemy(enemy, directionToPlayer, distanceToPlayer, now) {
+    // Always face player to block with shield
+    enemy.lookAt(player.position);
+    
+    // Move towards player if not in attack range
+    if (distanceToPlayer > enemy.userData.attackRange) {
+        moveEnemy(enemy, directionToPlayer);
+    } else {
+        // Attack player if cooldown expired
+        if (now - enemy.userData.lastAttackTime >= enemy.userData.attackCooldown) {
+            attackPlayer(enemy);
+            enemy.userData.lastAttackTime = now;
+        }
+    }
+}
+
+function handleTeleporterEnemy(enemy, directionToPlayer, distanceToPlayer, now) {
+    // Check if it's time to teleport
+    if (now - enemy.userData.lastTeleportTime >= enemy.userData.teleportCooldown &&
+        (distanceToPlayer < enemy.userData.attackRange * 0.7 || distanceToPlayer > enemy.userData.attackRange * 1.5)) {
+        
+        // Teleport to a better position
+        teleportEnemy(enemy);
+        enemy.userData.lastTeleportTime = now;
+    } else {
+        // Stay at medium range if possible
+        const optimalRange = enemy.userData.attackRange;
+        
+        if (distanceToPlayer < optimalRange - 2) {
+            // Too close, move away
+            moveEnemy(enemy, directionToPlayer.clone().negate());
+        } else if (distanceToPlayer > optimalRange + 2) {
+            // Too far, move closer
+            moveEnemy(enemy, directionToPlayer);
+        }
+    }
+    
+    // Attack if in good range and cooldown expired
+    if (distanceToPlayer <= enemy.userData.attackRange &&
+        now - enemy.userData.lastAttackTime >= enemy.userData.attackCooldown) {
+        fireProjectile(enemy, directionToPlayer);
+        enemy.userData.lastAttackTime = now;
+    }
+}
+
+function handleHealerEnemy(enemy, now) {
+    // Find closest damaged ally
+    let closestDamagedAlly = null;
+    let closestDistance = Infinity;
+    
+    for (const ally of activeEnemies) {
+        // Skip self or fully healed allies
+        if (ally === enemy || ally.userData.health >= ally.userData.maxHealth) continue;
+        
+        const distance = enemy.position.distanceTo(ally.position);
+        
+        if (distance < enemy.userData.healRange && distance < closestDistance) {
+            closestDamagedAlly = ally;
+            closestDistance = distance;
+        }
+    }
+    
+    if (closestDamagedAlly) {
+        // Move towards damaged ally
+        const directionToAlly = new THREE.Vector3()
+            .subVectors(closestDamagedAlly.position, enemy.position)
+            .normalize();
+        
+        moveEnemy(enemy, directionToAlly);
+        
+        // Heal ally if close enough and cooldown expired
+        if (closestDistance < enemy.userData.healRange * 0.5 &&
+            now - enemy.userData.lastHealTime >= enemy.userData.healCooldown) {
+            healAlly(enemy, closestDamagedAlly);
+            enemy.userData.lastHealTime = now;
+        }
+    } else {
+        // No damaged allies, stay back from player
+        const directionToPlayer = new THREE.Vector3()
+            .subVectors(player.position, enemy.position)
+            .normalize();
+        
+        const distanceToPlayer = enemy.position.distanceTo(player.position);
+        
+        if (distanceToPlayer < enemy.userData.healRange * 0.7) {
+            // Too close to player, move away
+            moveEnemy(enemy, directionToPlayer.clone().negate());
+        } else {
+            // Move randomly
+            const randomAngle = Math.random() * Math.PI * 2;
+            const randomDirection = new THREE.Vector3(
+                Math.cos(randomAngle),
+                0,
+                Math.sin(randomAngle)
+            );
+            moveEnemy(enemy, randomDirection);
+        }
+    }
+}
+
+function handleEliteEnemy(enemy, directionToPlayer, distanceToPlayer, now) {
+    // Basic movement behavior - get in range
+    if (distanceToPlayer > enemy.userData.attackRange) {
+        moveEnemy(enemy, directionToPlayer);
+    } else {
+        // Attack player if cooldown expired
+        if (now - enemy.userData.lastAttackTime >= enemy.userData.attackCooldown) {
+            attackPlayer(enemy);
+            enemy.userData.lastAttackTime = now;
+        }
+    }
+    
+    // Use special ability based on elite type if cooldown expired
+    if (now - enemy.userData.lastSpecialAttackTime >= enemy.userData.specialAttackCooldown) {
+        switch (enemy.userData.eliteType) {
+            case 'speed':
+                // Speed burst for short duration
+                useEliteSpeedBurst(enemy);
+                break;
+                
+            case 'damage':
+                // Heavy attack
+                useEliteHeavyAttack(enemy, directionToPlayer);
+                break;
+                
+            case 'health':
+                // Heal self and nearby allies
+                useEliteHeal(enemy);
+                break;
+                
+            case 'range':
+                // Multiple projectile barrage
+                useEliteBarrage(enemy, directionToPlayer);
+                break;
+        }
+        
+        enemy.userData.lastSpecialAttackTime = now;
+    }
+}
+
+function handleBossEnemy(enemy, directionToPlayer, distanceToPlayer, now) {
+    // Basic movement behavior - get in range
+    if (distanceToPlayer > enemy.userData.attackRange) {
+        moveEnemy(enemy, directionToPlayer);
+    } else {
+        // Regular attack if cooldown expired
+        if (now - enemy.userData.lastAttackTime >= enemy.userData.attackCooldown) {
+            attackPlayer(enemy);
+            enemy.userData.lastAttackTime = now;
+        }
+    }
+    
+    // Special attack if cooldown expired
+    if (now - enemy.userData.lastSpecialAttackTime >= enemy.userData.specialAttackCooldown) {
+        bossSpecialAttack(enemy);
+        enemy.userData.lastSpecialAttackTime = now;
+    }
+}
+
+function handleWardenBoss(enemy, directionToPlayer, distanceToPlayer, now) {
+    // Only move if shield is not active
+    if (!enemy.userData.shieldActive) {
+        if (distanceToPlayer > enemy.userData.attackRange) {
+            moveEnemy(enemy, directionToPlayer);
+        } else {
+            // Regular attack if cooldown expired
+            if (now - enemy.userData.lastAttackTime >= enemy.userData.attackCooldown) {
+                attackPlayer(enemy);
+                enemy.userData.lastAttackTime = now;
+            }
+        }
+    }
+    
+    // Shield wall ability
+    if (now - enemy.userData.lastShieldWallTime >= enemy.userData.shieldWallCooldown &&
+        !enemy.userData.shieldActive) {
+        
+        // Activate shield wall
+        activateWardenShield(enemy);
+        enemy.userData.lastShieldWallTime = now;
+    }
+    
+    // Ground slam ability
+    if (now - enemy.userData.lastGroundSlamTime >= enemy.userData.groundSlamCooldown &&
+        distanceToPlayer < enemy.userData.groundSlamRange) {
+        
+        wardenGroundSlam(enemy);
+        enemy.userData.lastGroundSlamTime = now;
+    }
+    
+    // Summon minions ability
+    if (now - enemy.userData.lastSummonTime >= enemy.userData.summonCooldown) {
+        wardenSummonMinions(enemy);
+        enemy.userData.lastSummonTime = now;
+    }
+}
+
+function handlePhantomBoss(enemy, directionToPlayer, distanceToPlayer, now) {
+    // Only move and attack if not phased
+    if (!enemy.userData.phaseActive) {
+        // Stay at medium range
+        const optimalRange = enemy.userData.attackRange * 0.7;
+        
+        if (distanceToPlayer < optimalRange - 2) {
+            // Too close, move away
+            moveEnemy(enemy, directionToPlayer.clone().negate());
+        } else if (distanceToPlayer > optimalRange + 2) {
+            // Too far, move closer
+            moveEnemy(enemy, directionToPlayer);
+        }
+        
+        // Regular attack if in range and cooldown expired
+        if (distanceToPlayer <= enemy.userData.attackRange &&
+            now - enemy.userData.lastAttackTime >= enemy.userData.attackCooldown) {
+            
+            firePhantomProjectile(enemy, directionToPlayer);
+            enemy.userData.lastAttackTime = now;
+        }
+    }
+    
+    // Teleport ability
+    if (now - enemy.userData.lastTeleportTime >= enemy.userData.teleportCooldown) {
+        phantomTeleportStrike(enemy);
+        enemy.userData.lastTeleportTime = now;
+    }
+    
+    // Clone ability
+    if (now - enemy.userData.lastCloneTime >= enemy.userData.cloneCooldown &&
+        enemy.userData.activeClones.length === 0) {
+        
+        phantomCreateClones(enemy);
+        enemy.userData.lastCloneTime = now;
+    }
+    
+    // Void zone ability
+    if (now - enemy.userData.lastVoidZoneTime >= enemy.userData.voidZoneCooldown) {
+        phantomCreateVoidZones(enemy);
+        enemy.userData.lastVoidZoneTime = now;
+    }
+    
+    // Phase shift ability
+    if (now - enemy.userData.lastPhaseShiftTime >= enemy.userData.phaseShiftCooldown &&
+        enemy.userData.health < enemy.userData.maxHealth * 0.5 && // Only below 50% health
+        !enemy.userData.phaseActive) {
+        
+        phantomPhaseShift(enemy);
+        enemy.userData.lastPhaseShiftTime = now;
+    }
+}
+
+function handleMegaBoss(enemy, directionToPlayer, distanceToPlayer, now) {
+    // Check for phase transitions based on health
+    checkMegaBossPhaseTransition(enemy);
+    
+    // Movement behavior based on current phase
+    const phase = enemy.userData.currentPhase;
+    
+    // Phase 1: Warden-like behavior
+    if (phase === 1) {
+        // Only move if shield is not active
+        if (!enemy.userData.shieldActive) {
+            if (distanceToPlayer > enemy.userData.attackRange) {
+                moveEnemy(enemy, directionToPlayer);
+            } else {
+                // Regular attack if cooldown expired
+                if (now - enemy.userData.lastAttackTime >= enemy.userData.attackCooldown) {
+                    attackPlayer(enemy);
+                    enemy.userData.lastAttackTime = now;
+                }
+            }
+        }
+        
+        // Shield wall ability
+        if (now - enemy.userData.lastShieldWallTime >= enemy.userData.shieldWallCooldown &&
+            !enemy.userData.shieldActive) {
+            
+            activateWardenShield(enemy);
+            enemy.userData.lastShieldWallTime = now;
+        }
+        
+        // Ground slam ability
+        if (now - enemy.userData.lastGroundSlamTime >= enemy.userData.groundSlamCooldown &&
+            distanceToPlayer < enemy.userData.groundSlamRange) {
+            
+            wardenGroundSlam(enemy);
+            enemy.userData.lastGroundSlamTime = now;
+        }
+        
+        // Summon minions ability
+        if (now - enemy.userData.lastSummonTime >= enemy.userData.summonCooldown) {
+            wardenSummonMinions(enemy);
+            enemy.userData.lastSummonTime = now;
+        }
+    }
+    // Phase 2: Phantom-like behavior
+    else if (phase === 2) {
+        // Stay at medium range
+        const optimalRange = enemy.userData.attackRange * 0.7;
+        
+        if (!enemy.userData.phaseActive) {
+            if (distanceToPlayer < optimalRange - 2) {
+                // Too close, move away
+                moveEnemy(enemy, directionToPlayer.clone().negate());
+            } else if (distanceToPlayer > optimalRange + 2) {
+                // Too far, move closer
+                moveEnemy(enemy, directionToPlayer);
+            }
+            
+            // Regular attack if in range and cooldown expired
+            if (distanceToPlayer <= enemy.userData.attackRange &&
+                now - enemy.userData.lastAttackTime >= enemy.userData.attackCooldown) {
+                
+                firePhantomProjectile(enemy, directionToPlayer);
+                enemy.userData.lastAttackTime = now;
+            }
+        }
+        
+        // Teleport ability
+        if (now - enemy.userData.lastTeleportTime >= enemy.userData.teleportCooldown) {
+            phantomTeleportStrike(enemy);
+            enemy.userData.lastTeleportTime = now;
+        }
+        
+        // Clone ability
+        if (now - enemy.userData.lastCloneTime >= enemy.userData.cloneCooldown &&
+            enemy.userData.activeClones.length === 0) {
+            
+            phantomCreateClones(enemy);
+            enemy.userData.lastCloneTime = now;
+        }
+        
+        // Void zone ability
+        if (now - enemy.userData.lastVoidZoneTime >= enemy.userData.voidZoneCooldown) {
+            phantomCreateVoidZones(enemy);
+            enemy.userData.lastVoidZoneTime = now;
+        }
+    }
+    // Phase 3: Ultimate phase - all abilities plus ultimates
+    else if (phase === 3) {
+        // More aggressive movement - always approach player
+        if (!enemy.userData.shieldActive && !enemy.userData.phaseActive && !enemy.userData.deathRayActive) {
+            moveEnemy(enemy, directionToPlayer);
+            
+            // Regular attack if in range and cooldown expired
+            if (distanceToPlayer <= enemy.userData.attackRange &&
+                now - enemy.userData.lastAttackTime >= enemy.userData.attackCooldown) {
+                
+                attackPlayer(enemy); // Higher damage in phase 3
+                enemy.userData.lastAttackTime = now;
+            }
+        }
+        
+        // Mix of abilities from both previous bosses
+        
+        // Shield wall (Warden)
+        if (now - enemy.userData.lastShieldWallTime >= enemy.userData.shieldWallCooldown &&
+            !enemy.userData.shieldActive) {
+            
+            activateWardenShield(enemy);
+            enemy.userData.lastShieldWallTime = now;
+        }
+        
+        // Ground slam (Warden)
+        if (now - enemy.userData.lastGroundSlamTime >= enemy.userData.groundSlamCooldown &&
+            distanceToPlayer < enemy.userData.groundSlamRange) {
+            
+            wardenGroundSlam(enemy);
+            enemy.userData.lastGroundSlamTime = now;
+        }
+        
+        // Teleport ability (Phantom)
+        if (now - enemy.userData.lastTeleportTime >= enemy.userData.teleportCooldown) {
+            phantomTeleportStrike(enemy);
+            enemy.userData.lastTeleportTime = now;
+        }
+        
+        // Ultimate abilities
+        
+        // Death Ray
+        if (now - enemy.userData.lastDeathRayTime >= enemy.userData.deathRayCooldown &&
+            !enemy.userData.deathRayActive) {
+            
+            megaBossDeathRay(enemy);
+            enemy.userData.lastDeathRayTime = now;
+        }
+        
+        // Meteor Strike
+        if (now - enemy.userData.lastMeteorTime >= enemy.userData.meteorCooldown) {
+            megaBossMeteorStrike(enemy);
+            enemy.userData.lastMeteorTime = now;
+        }
+        
+        // Reality Warp
+        if (now - enemy.userData.lastRealityWarpTime >= enemy.userData.realityWarpCooldown &&
+            !enemy.userData.realityWarpActive) {
+            
+            megaBossRealityWarp(enemy);
+            enemy.userData.lastRealityWarpTime = now;
+        }
+    }
+}
+
+function addShieldToEnemy(enemy) {
+    // Create shield mesh
+    const shieldGeometry = new THREE.PlaneGeometry(
+        enemy.geometry.parameters.width * 1.5,
+        enemy.geometry.parameters.height * 1.2
+    );
+    
+    const shieldMaterial = new THREE.MeshPhongMaterial({
+        color: 0x0088ff,
+        transparent: true,
+        opacity: 0.6,
+        side: THREE.DoubleSide
+    });
+    
+    const shield = new THREE.Mesh(shieldGeometry, shieldMaterial);
+    shield.position.set(0, 0, -enemy.geometry.parameters.depth * 0.6);
+    
+    // Add shield to enemy
+    enemy.add(shield);
+    enemy.userData.shieldMesh = shield;
+}
+
+function addHealAuraToEnemy(enemy) {
+    // Create heal aura (ring on the ground)
+    const auraGeometry = new THREE.RingGeometry(0.5, 0.8, 16);
+    const auraMaterial = new THREE.MeshBasicMaterial({
+        color: 0x00ff44,
+        transparent: true,
+        opacity: 0.3,
+        side: THREE.DoubleSide
+    });
+    
+    const aura = new THREE.Mesh(auraGeometry, auraMaterial);
+    aura.rotation.x = -Math.PI / 2; // Lay flat on ground
+    aura.position.y = -enemy.geometry.parameters.height / 2 + 0.1; // Just above ground
+    
+    enemy.add(aura);
+    enemy.userData.healAura = aura;
+    
+    // Animate the aura
+    animateHealAura(aura);
+}
+
+function animateHealAura(aura) {
+    const startScale = aura.scale.clone();
+    
+    function pulse() {
+        if (!aura.parent) return; // Stop if enemy is destroyed
+        
+        const time = performance.now() * 0.001;
+        const scale = 1 + Math.sin(time * 2) * 0.2;
+        
+        aura.scale.set(
+            startScale.x * scale,
+            startScale.y * scale,
+            startScale.z
+        );
+        
+        requestAnimationFrame(pulse);
+    }
+    
+    pulse();
+}
+
+function startPulsingAnimation(enemy) {
+    const originalColor = enemy.material.color.clone();
+    const pulseColor = new THREE.Color(0xffaa00);
+    
+    function pulse() {
+        if (!enemy.parent) return; // Stop if enemy is destroyed
+        
+        const time = performance.now() * 0.001;
+        const intensity = (Math.sin(time * enemy.userData.pulseRate) + 1) * 0.5; // 0 to 1
+        
+        // Interpolate between original and pulse color
+        enemy.material.color.copy(originalColor).lerp(pulseColor, intensity);
+        enemy.material.emissive.copy(new THREE.Color(0x000000)).lerp(new THREE.Color(0x330000), intensity);
+        
+        requestAnimationFrame(pulse);
+    }
+    
+    pulse();
+}
+
+function applyEliteModifiers(enemy) {
+    // Apply bonuses based on elite type
+    switch(enemy.userData.eliteType) {
+        case 'speed':
+            enemy.userData.speed *= 1.3; // 30% faster
+            enemy.userData.attackCooldown *= 0.8; // 20% faster attacks
+            enemy.material.color.setHex(0x00ddff); // Cyan color
+            break;
+            
+        case 'damage':
+            enemy.userData.damage *= 1.5; // 50% more damage
+            enemy.userData.attackRange *= 1.2; // 20% more range
+            enemy.material.color.setHex(0xff3333); // Red color
+            break;
+            
+        case 'health':
+            enemy.userData.health *= 2; // Double health
+            enemy.userData.maxHealth = enemy.userData.health;
+            enemy.material.color.setHex(0x33ff33); // Green color
+            break;
+            
+        case 'range':
+            enemy.userData.attackRange *= 1.8; // 80% more range
+            enemy.userData.projectileSpeed = 0.4; // Add projectile capability
+            enemy.material.color.setHex(0xffcc00); // Gold color
+            break;
+    }
+    
+    // Add glow effect for all elites
+    addGlowEffect(enemy, enemy.material.color.getHex());
+    
+    // Make elite bigger
+    enemy.scale.multiplyScalar(1.2);
+}
+
+function addGlowEffect(enemy, color) {
+    // Create a slightly larger wireframe mesh with emissive material
+    const glowGeometry = new THREE.BoxGeometry(
+        enemy.geometry.parameters.width * 1.1,
+        enemy.geometry.parameters.height * 1.1,
+        enemy.geometry.parameters.depth * 1.1
+    );
+    
+    const glowMaterial = new THREE.MeshBasicMaterial({
+        color: color,
+        wireframe: true,
+        transparent: true,
+        opacity: 0.3
+    });
+    
+    const glow = new THREE.Mesh(glowGeometry, glowMaterial);
+    enemy.add(glow);
+    
+    // Animate the glow effect
+    animateGlow(glow);
+}
+
+function animateGlow(glow) {
+    function pulse() {
+        if (!glow.parent) return; // Stop if enemy is destroyed
+        
+        const time = performance.now() * 0.001;
+        const scale = 1 + Math.sin(time * 2) * 0.05;
+        
+        glow.scale.set(scale, scale, scale);
+        glow.material.opacity = 0.2 + Math.sin(time * 3) * 0.1;
+        
+        requestAnimationFrame(pulse);
+    }
+    
+    pulse();
+}
+
+function teleportEnemy(enemy) {
+    // Calculate new position
+    const angle = Math.random() * Math.PI * 2;
+    const distance = enemy.userData.teleportDistance;
+    
+    const newPosition = new THREE.Vector3(
+        player.position.x + Math.cos(angle) * distance,
+        enemy.position.y,
+        player.position.z + Math.sin(angle) * distance
+    );
+    
+    // Create teleport effect at current position
+    createTeleportEffect(enemy.position);
+    
+    // Move enemy to new position
+    enemy.position.copy(newPosition);
+    
+    // Create teleport effect at new position
+    createTeleportEffect(enemy.position);
+}
+
+function createTeleportEffect(position) {
+    // Create particle burst
+    const particles = [];
+    const particleCount = 20;
+    
+    for (let i = 0; i < particleCount; i++) {
+        const geometry = new THREE.BoxGeometry(0.1, 0.1, 0.1);
+        const material = new THREE.MeshBasicMaterial({
+            color: 0x8800ff,
+            transparent: true,
+            opacity: 0.8
+        });
+        
+        const particle = new THREE.Mesh(geometry, material);
+        particle.position.copy(position);
+        
+        // Random velocity
+        particle.userData = {
+            velocity: new THREE.Vector3(
+                (Math.random() - 0.5) * 0.15,
+                (Math.random() * 0.1) + 0.05,
+                (Math.random() - 0.5) * 0.15
+            ),
+            lifetime: 500,
+            spawnTime: performance.now()
+        };
+        
+        scene.add(particle);
+        particles.push(particle);
+    }
+    
+    // Animate particles
+    function animateParticles() {
+        const now = performance.now();
+        let allDone = true;
+        
+        for (let i = particles.length - 1; i >= 0; i--) {
+            const particle = particles[i];
+            const elapsed = now - particle.userData.spawnTime;
+            
+            if (elapsed > particle.userData.lifetime) {
+                scene.remove(particle);
+                particles.splice(i, 1);
+                continue;
+            }
+            
+            // Still have active particles
+            allDone = false;
+            
+            // Update position
+            particle.position.add(particle.userData.velocity);
+            
+            // Fade out
+            const progress = elapsed / particle.userData.lifetime;
+            particle.material.opacity = 0.8 * (1 - progress);
+        }
+        
+        if (!allDone) {
+            requestAnimationFrame(animateParticles);
+        }
+    }
+    
+    // Start the animation
+    requestAnimationFrame(animateParticles);
+}       
+
+// Elite enemy special abilities
+function useEliteSpeedBurst(enemy) {
+    // Store original speed
+    const originalSpeed = enemy.userData.speed;
+    
+    // Double speed for 3 seconds
+    enemy.userData.speed *= 2;
+    
+    // Visual effect - trail
+    createTrailEffect(enemy);
+    
+    // Reset speed after duration
+    setTimeout(() => {
+        if (enemy.parent) { // Check if enemy still exists
+            enemy.userData.speed = originalSpeed;
+        }
+    }, 3000);
+}
+
+function useEliteHeavyAttack(enemy, direction) {
+    // Heavy attack that does more damage in an area
+    const attackRadius = enemy.userData.attackRange * 1.5;
+    const attackDamage = enemy.userData.damage * 2;
+    
+    // Check if player is in range
+    const distanceToPlayer = enemy.position.distanceTo(player.position);
+    
+    if (distanceToPlayer <= attackRadius) {
+        // Apply damage
+        takeDamage(attackDamage);
+        
+        // Visual effect
+        createShockwave(enemy.position, attackRadius);
+    }
+}
+
+function useEliteHeal(enemy) {
+    // Heal self
+    const healAmount = enemy.userData.maxHealth * 0.3; // 30% of max health
+    enemy.userData.health = Math.min(enemy.userData.health + healAmount, enemy.userData.maxHealth);
+    
+    // Heal nearby allies
+    const healRadius = 10;
+    
+    for (const ally of activeEnemies) {
+        // Skip self
+        if (ally === enemy) continue;
+        
+        // Check if ally is in range
+        const distanceToAlly = enemy.position.distanceTo(ally.position);
+        
+        if (distanceToAlly <= healRadius) {
+            // Heal ally by 20% of their max health
+            ally.userData.health = Math.min(
+                ally.userData.health + ally.userData.maxHealth * 0.2,
+                ally.userData.maxHealth
+            );
+            
+            // Create healing particles between enemies
+            createHealingBeam(enemy.position, ally.position);
+        }
+    }
+    
+    // Visual effect around elite
+    createHealPulse(enemy);
+}
+
+function useEliteBarrage(enemy, direction) {
+    // Fire multiple projectiles in a spread pattern
+    const projectileCount = 5;
+    const spreadAngle = Math.PI / 6; // 30 degrees spread
+    
+    // Center direction
+    fireProjectile(enemy, direction);
+    
+    // Additional projectiles with spread
+    for (let i = 1; i <= projectileCount / 2; i++) {
+        // Calculate angles for spread
+        const leftAngle = i * (spreadAngle / (projectileCount / 2));
+        const rightAngle = -i * (spreadAngle / (projectileCount / 2));
+        
+        // Create rotated directions
+        const leftDirection = direction.clone();
+        const leftRotation = new THREE.Matrix4().makeRotationY(leftAngle);
+        leftDirection.applyMatrix4(leftRotation);
+        
+        const rightDirection = direction.clone();
+        const rightRotation = new THREE.Matrix4().makeRotationY(rightAngle);
+        rightDirection.applyMatrix4(rightRotation);
+        
+        // Fire projectiles
+        fireProjectile(enemy, leftDirection);
+        fireProjectile(enemy, rightDirection);
+    }
+}
+
+// Create trail effect for speeder enemies
+function createTrailEffect(enemy) {
+    // Create trail particles that follow the enemy
+    const trailInterval = setInterval(() => {
+        if (!enemy.parent) {
+            // Enemy no longer exists, stop creating trail
+            clearInterval(trailInterval);
+            return;
+        }
+        
+        // Create trail particle
+        const geometry = new THREE.SphereGeometry(0.1, 8, 8);
+        const material = new THREE.MeshBasicMaterial({
+            color: enemy.material.color,
+            transparent: true,
+            opacity: 0.7
+        });
+        
+        const particle = new THREE.Mesh(geometry, material);
+        
+        // Position at enemy location
+        particle.position.copy(enemy.position);
+        particle.position.y += 1; // Slightly above ground
+        
+        // Add metadata for animation
+        particle.userData = {
+            lifetime: 500,
+            spawnTime: performance.now()
+        };
+        
+        scene.add(particle);
+        
+        // Animate particle
+        function animateTrailParticle() {
+            const now = performance.now();
+            const elapsed = now - particle.userData.spawnTime;
+            
+            if (elapsed > particle.userData.lifetime) {
+                scene.remove(particle);
+                return;
+            }
+            
+            // Fade out
+            const progress = elapsed / particle.userData.lifetime;
+            particle.material.opacity = 0.7 * (1 - progress);
+            particle.scale.multiplyScalar(0.98); // Shrink gradually
+            
+            requestAnimationFrame(animateTrailParticle);
+        }
+        
+        animateTrailParticle();
+        
+    }, 50); // Create trail particles every 50ms
+    
+    // Store the interval ID for cleanup
+    enemy.userData.trailInterval = trailInterval;
+}
+
+// Healer enemy functions
+function healAlly(healer, ally) {
+    // Apply healing
+    const healAmount = healer.userData.healAmount;
+    ally.userData.health = Math.min(ally.userData.health + healAmount, ally.userData.maxHealth);
+    
+    // Create healing beam visual
+    createHealingBeam(healer.position, ally.position);
+}
+
+function createHealingBeam(source, target) {
+    // Create a beam between healer and target
+    const direction = new THREE.Vector3().subVectors(target, source);
+    const distance = direction.length();
+    direction.normalize();
+    
+    // Create beam geometry
+    const beamGeometry = new THREE.CylinderGeometry(0.05, 0.05, distance, 8);
+    const beamMaterial = new THREE.MeshBasicMaterial({
+        color: 0x00ff44,
+        transparent: true,
+        opacity: 0.6
+    });
+    
+    const beam = new THREE.Mesh(beamGeometry, beamMaterial);
+    
+    // Position and orient beam
+    beam.position.copy(source.clone().add(target).multiplyScalar(0.5));
+    beam.position.y += 1; // Raise slightly above ground
+    
+    // Orient beam to connect the points
+    beam.quaternion.setFromUnitVectors(
+        new THREE.Vector3(0, 1, 0),
+        direction
+    );
+    
+    // Add to scene
+    scene.add(beam);
+    
+    // Animate and remove
+    const startTime = performance.now();
+    const duration = 500; // 0.5 second
+    
+    function animateBeam() {
+        const now = performance.now();
+        const elapsed = now - startTime;
+        const progress = elapsed / duration;
+        
+        if (progress >= 1) {
+            scene.remove(beam);
+            return;
+        }
+        
+        // Pulse effect
+        const pulse = 1 + 0.2 * Math.sin(progress * Math.PI * 6);
+        beam.scale.x = beam.scale.z = pulse;
+        
+        // Fade out at the end
+        if (progress > 0.7) {
+            beam.material.opacity = 0.6 * (1 - (progress - 0.7) / 0.3);
+        }
+        
+        requestAnimationFrame(animateBeam);
+    }
+    
+    requestAnimationFrame(animateBeam);
+}
+
+function createHealPulse(enemy) {
+    // Create ring pulse effect
+    const ringGeometry = new THREE.RingGeometry(0.5, 0.8, 32);
+    const ringMaterial = new THREE.MeshBasicMaterial({
+        color: 0x00ff44,
+        transparent: true,
+        opacity: 0.7,
+        side: THREE.DoubleSide
+    });
+    
+    const ring = new THREE.Mesh(ringGeometry, ringMaterial);
+    ring.rotation.x = -Math.PI / 2; // Lay flat
+    ring.position.copy(enemy.position);
+    ring.position.y = 0.1; // Just above ground
+    
+    scene.add(ring);
+    
+    // Animate expanding ring
+    const startTime = performance.now();
+    const duration = 1000; // 1 second
+    const maxRadius = 10;
+    
+    function animatePulse() {
+        const now = performance.now();
+        const elapsed = now - startTime;
+        const progress = elapsed / duration;
+        
+        if (progress >= 1) {
+            scene.remove(ring);
+            return;
+        }
+        
+        // Expand ring
+        const scale = 1 + progress * (maxRadius - 1);
+        ring.scale.set(scale, scale, scale);
+        
+        // Fade out gradually
+        ring.material.opacity = 0.7 * (1 - progress);
+        
+        requestAnimationFrame(animatePulse);
+    }
+    
+    requestAnimationFrame(animatePulse);
+}
+
+// Warden Boss abilities
+function activateWardenShield(boss) {
+    boss.userData.shieldActive = true;
+    
+    // Create shield visual if it doesn't exist
+    if (!boss.userData.shieldMesh) {
+        const shieldGeometry = new THREE.SphereGeometry(
+            Math.max(boss.geometry.parameters.width, boss.geometry.parameters.height) * 0.7,
+            32, 32, 0, Math.PI * 2, 0, Math.PI
+        );
+        
+        const shieldMaterial = new THREE.MeshBasicMaterial({
+            color: 0xff3300,
+            transparent: true,
+            opacity: 0.4,
+            side: THREE.DoubleSide
+        });
+        
+        const shield = new THREE.Mesh(shieldGeometry, shieldMaterial);
+        boss.add(shield);
+        boss.userData.shieldMesh = shield;
+    } else {
+        boss.userData.shieldMesh.visible = true;
+    }
+    
+    // Create shield activation effect
+    createShieldActivationEffect(boss);
+    
+    // Show notification
+    showNotification("The Warden activates a protective shield!", 3000);
+    
+    // Deactivate shield after duration
+    setTimeout(() => {
+        if (boss.parent) { // Check if boss still exists
+            boss.userData.shieldActive = false;
+            if (boss.userData.shieldMesh) {
+                boss.userData.shieldMesh.visible = false;
+            }
+            
+            // Show notification
+            showNotification("The Warden's shield has fallen!", 3000);
+        }
+    }, boss.userData.shieldWallDuration);
+}
+
+function wardenGroundSlam(boss) {
+    // Create ground slam effect
+    const slamRange = boss.userData.groundSlamRange;
+    const slamDamage = boss.userData.groundSlamDamage;
+    
+    // Visual warning before slam
+    createSlamWarning(boss.position, slamRange);
+    
+    // Delay actual slam effect
+    setTimeout(() => {
+        if (!boss.parent) return; // Boss no longer exists
+        
+        createShockwave(boss.position, slamRange);
+        
+        // Check if player is in range
+        const distanceToPlayer = boss.position.distanceTo(player.position);
+        
+        if (distanceToPlayer <= slamRange) {
+            takeDamage(slamDamage);
+            
+            // Add screen shake effect
+            addScreenShake(0.5, 500);
+        }
+        
+        // Show notification
+        showNotification("Ground Slam!", 1500);
+        
+    }, 1500); // 1.5 second warning
+}
+
+function wardenSummonMinions(boss) {
+    const minionCount = boss.userData.summonCount;
+    
+    // Create summon effect
+    createSummonEffect(boss.position);
+    
+    // Show notification
+    showNotification("The Warden summons reinforcements!", 3000);
+    
+    // Spawn minions over time
+    for (let i = 0; i < minionCount; i++) {
+        setTimeout(() => {
+            if (!boss.parent) return; // Boss no longer exists
+            
+            // Spawn position near boss
+            const angle = (i / minionCount) * Math.PI * 2;
+            const spawnPos = new THREE.Vector3(
+                boss.position.x + Math.cos(angle) * 5,
+                boss.position.y,
+                boss.position.z + Math.sin(angle) * 5
+            );
+            
+            // Create teleport effect
+            createTeleportEffect(spawnPos);
+            
+            // Randomly choose between normal and speeder enemies
+            const enemyType = Math.random() > 0.5 ? 
+                ENEMY_TYPES.NORMAL : ENEMY_TYPES.SPEEDER;
+            
+            // Create enemy at this position
+            setTimeout(() => {
+                const enemy = spawnEnemy(enemyType);
+                enemy.position.copy(spawnPos);
+            }, 500);
+            
+        }, i * 800); // Stagger spawns
+    }
+}
+
+// Phantom Boss abilities
+function phantomTeleportStrike(boss) {
+    // Store original position for effect
+    const originalPosition = boss.position.clone();
+    
+    // Calculate position behind player
+    const playerDirection = new THREE.Vector3(0, 0, -1);
+    camera.getWorldDirection(playerDirection);
+    playerDirection.negate(); // Behind player
+    
+    const teleportDistance = 3; // Closer than normal teleport
+    const targetPosition = player.position.clone().add(
+        playerDirection.multiplyScalar(teleportDistance)
+    );
+    
+    // Create teleport effect at original position
+    createTeleportEffect(originalPosition);
+    
+    // Hide boss briefly
+    boss.visible = false;
+    
+    // Teleport after a short delay
+    setTimeout(() => {
+        if (!boss.parent) return; // Boss no longer exists
+        
+        // Move boss to new position
+        boss.position.copy(targetPosition);
+        
+        // Make boss visible again
+        boss.visible = true;
+        
+        // Create teleport effect at new position
+        createTeleportEffect(boss.position);
+        
+        // Strike immediately
+        attackPlayer(boss);
+        
+        // Show notification
+        showNotification("Teleport Strike!", 1500);
+        
+    }, 500); // 0.5 second delay
+}
+
+function phantomCreateClones(boss) {
+    const cloneCount = boss.userData.cloneCount;
+    boss.userData.activeClones = [];
+    
+    // Create teleport effect
+    createTeleportEffect(boss.position);
+    
+    // Show notification
+    showNotification("The Phantom creates shadow clones!", 3000);
+    
+    // Create clones
+    for (let i = 0; i < cloneCount; i++) {
+        // Calculate position in a circle around the boss
+        const angle = (i / cloneCount) * Math.PI * 2;
+        const distance = 8; // Distance from boss
+        
+        const clonePosition = new THREE.Vector3(
+            boss.position.x + Math.cos(angle) * distance,
+            boss.position.y,
+            boss.position.z + Math.sin(angle) * distance
+        );
+        
+        // Create clone with similar appearance but weaker
+        const cloneGeometry = new THREE.BoxGeometry(
+            boss.geometry.parameters.width * 0.9,
+            boss.geometry.parameters.height * 0.9,
+            boss.geometry.parameters.depth * 0.9
+        );
+        
+        const cloneMaterial = new THREE.MeshPhongMaterial({
+            color: boss.material.color,
+            emissive: boss.material.emissive,
+            transparent: true,
+            opacity: 0.7
+        });
+        
+        const clone = new THREE.Mesh(cloneGeometry, cloneMaterial);
+        clone.position.copy(clonePosition);
+        
+        // Add clone metadata
+        clone.userData = {
+            isPhantomClone: true,
+            health: boss.userData.health * 0.2, // Much weaker
+            damage: boss.userData.damage * 0.5, // Half damage
+            speed: boss.userData.speed * 1.2, // Slightly faster
+            originalBoss: boss
+        };
+        
+        // Add clone to scene
+        scene.add(clone);
+        createTeleportEffect(clonePosition);
+        
+        // Track clone
+        boss.userData.activeClones.push(clone);
+        
+        // Make clone look at player
+        clone.lookAt(player.position);
+    }
+    
+    // Remove clones after duration
+    setTimeout(() => {
+        if (!boss.parent) return; // Boss no longer exists
+        
+        // Remove all remaining clones
+        for (const clone of boss.userData.activeClones) {
+            if (clone.parent) {
+                createTeleportEffect(clone.position);
+                scene.remove(clone);
+            }
+        }
+        
+        boss.userData.activeClones = [];
+        
+    }, boss.userData.cloneDuration);
+}
+
+function phantomCreateVoidZones(boss) {
+    const zoneCount = boss.userData.voidZoneCount;
+    const zoneDuration = boss.userData.voidZoneDuration;
+    const zoneDamage = boss.userData.voidZoneDamage;
+    
+    // Show notification
+    showNotification("Void Zones forming!", 3000);
+    
+    // Create void zones around the player
+    for (let i = 0; i < zoneCount; i++) {
+        // Calculate positions in a circle around the player
+        const angle = (i / zoneCount) * Math.PI * 2;
+        const distance = 8; // Distance from player
+        
+        const zonePosition = new THREE.Vector3(
+            player.position.x + Math.cos(angle) * distance,
+            0.1, // Just above ground
+            player.position.z + Math.sin(angle) * distance
+        );
+        
+        // Create void zone visual
+        createVoidZone(zonePosition, zoneDamage, zoneDuration);
+    }
+}
+
+function createVoidZone(position, damage, duration) {
+    // Create void zone mesh
+    const zoneGeometry = new THREE.CircleGeometry(5, 32);
+    const zoneMaterial = new THREE.MeshBasicMaterial({
+        color: 0x440088,
+        transparent: true,
+        opacity: 0.5,
+        side: THREE.DoubleSide
+    });
+    
+    const zone = new THREE.Mesh(zoneGeometry, zoneMaterial);
+    zone.rotation.x = -Math.PI / 2; // Lay flat
+    zone.position.copy(position);
+    
+    // Add zone metadata
+    zone.userData = {
+        isVoidZone: true,
+        damage: damage,
+        damageInterval: 500, // Damage every 0.5 seconds
+        lastDamageTime: 0,
+        createTime: performance.now(),
+        duration: duration
+    };
+    
+    scene.add(zone);
+    
+    // Create formation effect
+    createVoidZoneFormation(position, zone);
+    
+    // Start damage check interval
+    const damageInterval = setInterval(() => {
+        if (!zone.parent) {
+            clearInterval(damageInterval);
+            return;
+        }
+        
+        // Check if player is in the zone
+        const distanceToPlayer = new THREE.Vector2(
+            zone.position.x, zone.position.z
+        ).distanceTo(new THREE.Vector2(
+            player.position.x, player.position.z
+        ));
+        
+        if (distanceToPlayer <= 5) { // Zone radius
+            takeDamage(zone.userData.damage);
+            createVoidDamageEffect(player.position);
+        }
+        
+    }, zone.userData.damageInterval);
+    
+    // Remove zone after duration
+    setTimeout(() => {
+        if (zone.parent) {
+            clearInterval(damageInterval);
+            fadeOutAndRemove(zone);
+        }
+    }, duration);
+    
+    return zone;
+}
+
+function firePhantomProjectile(boss, direction) {
+    // Create phantom projectile with different appearance
+    const projectileGeometry = new THREE.SphereGeometry(0.4, 8, 8);
+    const projectileMaterial = new THREE.MeshBasicMaterial({ 
+        color: 0x8800cc,
+        transparent: true,
+        opacity: 0.7
+    });
+    
+    const projectile = new THREE.Mesh(projectileGeometry, projectileMaterial);
+    
+    // Position the projectile at the boss
+    projectile.position.copy(boss.position);
+    projectile.position.y = boss.position.y + boss.geometry.parameters.height * 0.6;
+    
+    // Store projectile metadata
+    projectile.userData = {
+        direction: direction.clone(),
+        speed: 0.5, // Faster than normal projectiles
+        damage: boss.userData.damage,
+        lifetime: 10000, // 10 seconds lifetime
+        spawnTime: performance.now(),
+        
+        // Additional properties for phantom projectiles
+        isPhantomProjectile: true,
+        pulsateSpeed: 0.1 + Math.random() * 0.1
+    };
+    
+    // Add glow effect to projectile
+    const glowGeometry = new THREE.SphereGeometry(0.6, 8, 8);
+    const glowMaterial = new THREE.MeshBasicMaterial({
+        color: 0x8800cc,
+        transparent: true,
+        opacity: 0.3,
+        side: THREE.BackSide
+    });
+    
+    const glow = new THREE.Mesh(glowGeometry, glowMaterial);
+    projectile.add(glow);
+    
+    // Start pulsing animation
+    animatePhantomProjectile(projectile);
+    
+    // Add projectile to scene and tracking array
+    scene.add(projectile);
+    projectiles.push(projectile);
+}
+
+function animatePhantomProjectile(projectile) {
+    const startTime = performance.now();
+    
+    function animate() {
+        if (!projectile.parent) return; // Projectile was removed
+        
+        const now = performance.now();
+        const elapsed = now - startTime;
+        
+        // Pulsing size effect
+        const scale = 1 + 0.3 * Math.sin(elapsed * projectile.userData.pulsateSpeed);
+        projectile.scale.set(scale, scale, scale);
+        
+        requestAnimationFrame(animate);
+    }
+    
+    animate();
+}
+
+function phantomPhaseShift(boss) {
+    boss.userData.phaseActive = true;
+    
+    // Visual effect - change material to more transparent
+    const originalOpacity = boss.material.opacity;
+    boss.material.opacity = 0.3;
+    
+    // Add glowing effect
+    addGlowEffect(boss, 0x8800cc);
+    
+    // Show notification
+    showNotification("The Phantom shifts between dimensions!", 3000);
+    
+    // End phase shift after duration
+    setTimeout(() => {
+        if (!boss.parent) return; // Boss no longer exists
+        
+        boss.userData.phaseActive = false;
+        boss.material.opacity = originalOpacity;
+        
+        // Show notification
+        showNotification("The Phantom has fully materialized again!", 3000);
+        
+    }, boss.userData.phaseDuration);
+}
+
+// Mega Boss abilities
+function checkMegaBossPhaseTransition(boss) {
+    const healthPercentage = boss.userData.health / boss.userData.maxHealth;
+    const currentPhase = boss.userData.currentPhase;
+    
+    // Phase transitions at 66% and 33% health
+    if (healthPercentage <= boss.userData.phaseThresholds[0] && currentPhase === 1) {
+        // Transition to Phase 2
+        boss.userData.currentPhase = 2;
+        megaBossPhaseTransition(boss, 2);
+    }
+    else if (healthPercentage <= boss.userData.phaseThresholds[1] && currentPhase === 2) {
+        // Transition to Phase 3
+        boss.userData.currentPhase = 3;
+        megaBossPhaseTransition(boss, 3);
+    }
+}
+
+function megaBossPhaseTransition(boss, newPhase) {
+    // Create phase transition effect
+    createPhaseTransitionEffect(boss);
+    
+    // Update boss appearance
+    boss.material.color.setHex(boss.userData.phaseColors[newPhase - 1]);
+    
+    // Show notification
+    showNotification(`THE OVERLORD ENTERS PHASE ${newPhase}!`, 5000);
+    
+    // Add screen shake
+    addScreenShake(1.0, 1000);
+    
+    // Phase-specific changes
+    switch(newPhase) {
+        case 2:
+            // Speed increase
+            boss.userData.speed *= 1.2;
+            break;
+            
+        case 3:
+            // Speed increase
+            boss.userData.speed *= 1.3;
+            // Damage increase
+            boss.userData.damage *= 1.5;
+            break;
+    }
+}
+
+function megaBossDeathRay(boss) {
+    boss.userData.deathRayActive = true;
+    
+    // Create charging effect first
+    createDeathRayChargingEffect(boss);
+    
+    // Show warning notification
+    showNotification("THE OVERLORD IS CHARGING A DEATH RAY!", 3000);
+    
+    // After charging, fire the ray
+    setTimeout(() => {
+        if (!boss.parent) return; // Boss no longer exists
+        
+        // Create death ray effect
+        createDeathRayBeam(boss);
+        
+        // Show notification
+        showNotification("DEATH RAY FIRED!", 2000);
+        
+        // Apply damage in a line
+        applyDeathRayDamage(boss);
+        
+        // End death ray after duration
+        setTimeout(() => {
+            if (boss.parent) {
+                boss.userData.deathRayActive = false;
+            }
+        }, boss.userData.deathRayDuration);
+        
+    }, 2000); // 2 second charge time
+}
+
+function megaBossMeteorStrike(boss) {
+    // Show notification
+    showNotification("METEOR STRIKE INCOMING!", 3000);
+    
+    // Calculate positions around player
+    const meteorCount = boss.userData.meteorCount;
+    const meteorDamage = boss.userData.meteorDamage;
+    const radius = 20; // Area of effect
+    
+    // Create meteor warning indicators first
+    const targetPositions = [];
+    
+    for (let i = 0; i < meteorCount; i++) {
+        // Random position within radius of player
+        const angle = Math.random() * Math.PI * 2;
+        const distance = Math.random() * radius;
+        
+        const targetPos = new THREE.Vector3(
+            player.position.x + Math.cos(angle) * distance,
+            0,
+            player.position.z + Math.sin(angle) * distance
+        );
+        
+        targetPositions.push(targetPos);
+        
+        // Create warning indicator
+        createMeteorWarning(targetPos);
+    }
+    
+    // After delay, create actual meteors
+    setTimeout(() => {
+        targetPositions.forEach((pos, i) => {
+            // Stagger meteor impacts slightly
+            setTimeout(() => {
+                createMeteorImpact(pos, meteorDamage);
+            }, i * 200);
+        });
+    }, 2000); // 2 second warning
+}
+
+function megaBossRealityWarp(boss) {
+    boss.userData.realityWarpActive = true;
+    
+    // Show notification
+    showNotification("REALITY DISTORTION FIELD ACTIVATED!", 5000);
+    
+    // Visual effects for reality warp
+    createRealityWarpEffect();
+    
+    // Apply warp effects to player movement
+    applyRealityWarpEffects();
+    
+    // End reality warp after duration
+    setTimeout(() => {
+        if (boss.parent) {
+            boss.userData.realityWarpActive = false;
+            
+            // Reset any applied effects
+            resetRealityWarpEffects();
+            
+            // Show notification
+            showNotification("Reality stabilizing...", 3000);
+        }
+    }, boss.userData.realityWarpDuration);
+}
+
+// Special effect functions
+function createBossEntranceEffect(boss) {
+    // Create lightning strikes around the boss
+    for (let i = 0; i < 5; i++) {
+        setTimeout(() => {
+            if (!boss.parent) return;
+            
+            // Calculate random position near boss
+            const angle = Math.random() * Math.PI * 2;
+            const distance = 3 + Math.random() * 7;
+            
+            const strikePos = new THREE.Vector3(
+                boss.position.x + Math.cos(angle) * distance,
+                0,
+                boss.position.z + Math.sin(angle) * distance
+            );
+            
+            // Create lightning effect
+            createLightningStrike(strikePos, 10);
+            
+        }, i * 300); // Stagger lightning strikes
+    }
+    
+    // Create shockwave
+    setTimeout(() => {
+        if (!boss.parent) return;
+        
+        createShockwave(boss.position, 15);
+        addScreenShake(0.7, 1000);
+        
+    }, 1500);
+}
+
+function createExplosion(position, radius, damage) {
+    // Create explosion mesh
+    const explosionGeometry = new THREE.SphereGeometry(0.1, 16, 16);
+    const explosionMaterial = new THREE.MeshBasicMaterial({
+        color: 0xff6600,
+        transparent: true,
+        opacity: 0.8
+    });
+    
+    const explosion = new THREE.Mesh(explosionGeometry, explosionMaterial);
+    explosion.position.copy(position);
+    scene.add(explosion);
+    
+    // Animate explosion
+    const duration = 500; // 0.5 seconds
+    const startTime = performance.now();
+    
+    // Create light for explosion
+    const light = new THREE.PointLight(0xff6600, 2, radius * 2);
+    light.position.copy(position);
+    scene.add(light);
+    
+    // Add screen shake
+    addScreenShake(0.5, 500);
+    
+    // Check if player is in explosion radius
+    const distanceToPlayer = position.distanceTo(player.position);
+    if (distanceToPlayer <= radius) {
+        // Calculate damage based on distance (more damage closer to center)
+        const damageFactor = 1 - (distanceToPlayer / radius);
+        const actualDamage = Math.max(1, Math.round(damage * damageFactor));
+        takeDamage(actualDamage);
+    }
+    
+    function animateExplosion() {
+        const now = performance.now();
+        const elapsed = now - startTime;
+        const progress = Math.min(elapsed / duration, 1);
+        
+        // Expand explosion
+        const currentRadius = radius * progress;
+        explosion.scale.set(currentRadius, currentRadius, currentRadius);
+        
+        // Fade out explosion and light
+        explosion.material.opacity = 0.8 * (1 - progress);
+        light.intensity = 2 * (1 - progress);
+        
+        if (progress < 1) {
+            requestAnimationFrame(animateExplosion);
+        } else {
+            // Remove explosion and light
+            scene.remove(explosion);
+            scene.remove(light);
+        }
+    }
+    
+    animateExplosion();
+}
+
+// Helper functions for visual effects
+function addScreenShake(intensity, duration) {
+    // Store original camera position
+    const originalPosition = camera.position.clone();
+    
+    // Start time
+    const startTime = performance.now();
+    
+    // Animation function
+    function shakeCamera() {
+        const now = performance.now();
+        const elapsed = now - startTime;
+        const progress = elapsed / duration;
+        
+        if (progress < 1) {
+            // Calculate shake amount (reduces over time)
+            const shakeAmount = intensity * (1 - progress);
+            
+            // Apply random offset to camera
+            camera.position.set(
+                originalPosition.x + (Math.random() - 0.5) * shakeAmount,
+                originalPosition.y + (Math.random() - 0.5) * shakeAmount,
+                originalPosition.z + (Math.random() - 0.5) * shakeAmount
+            );
+            
+            requestAnimationFrame(shakeCamera);
+        } else {
+            // Reset to original position
+            camera.position.copy(originalPosition);
+        }
+    }
+    
+    requestAnimationFrame(shakeCamera);
+}
+
+function createShockwave(position, radius) {
+    // Create ring mesh
+    const waveGeometry = new THREE.RingGeometry(0.1, 0.5, 32);
+    const waveMaterial = new THREE.MeshBasicMaterial({
+        color: 0xff3300,
+        transparent: true,
+        opacity: 0.7,
+        side: THREE.DoubleSide
+    });
+    
+    const wave = new THREE.Mesh(waveGeometry, waveMaterial);
+    wave.position.copy(position);
+    wave.position.y = 0.1; // Just above ground
+    wave.rotation.x = -Math.PI / 2; // Lay flat
+    
+    scene.add(wave);
+    
+    // Animate shockwave
+    const duration = 1000; // 1 second
+    const startTime = performance.now();
+    
+    function animateWave() {
+        const now = performance.now();
+        const elapsed = now - startTime;
+        const progress = Math.min(elapsed / duration, 1);
+        
+        // Scale wave based on progress
+        const currentRadius = radius * progress;
+        wave.scale.set(currentRadius, currentRadius, 1);
+        
+        // Fade out as it expands
+        wave.material.opacity = 0.7 * (1 - progress);
+        
+        if (progress < 1) {
+            requestAnimationFrame(animateWave);
+        } else {
+            scene.remove(wave);
+        }
+    }
+    
+    requestAnimationFrame(animateWave);
+}
+
+function createLightningStrike(position, height) {
+    // Create lightning mesh (line segments for jagged effect)
+    const points = [];
+    const segments = 10;
+    
+    // Generate jagged line points
+    for (let i = 0; i <= segments; i++) {
+        const y = height * (i / segments);
+        const xOffset = (i === 0 || i === segments) ? 0 : (Math.random() - 0.5) * 2;
+        const zOffset = (i === 0 || i === segments) ? 0 : (Math.random() - 0.5) * 2;
+        
+        points.push(new THREE.Vector3(xOffset, y, zOffset));
+    }
+    
+    // Create lightning geometry
+    const lightningGeometry = new THREE.BufferGeometry().setFromPoints(points);
+    const lightningMaterial = new THREE.LineBasicMaterial({
+        color: 0xaaccff,
+        linewidth: 3
+    });
+    
+    const lightning = new THREE.Line(lightningGeometry, lightningMaterial);
+    lightning.position.copy(position);
+    
+    scene.add(lightning);
+    
+    // Create light flash
+    const light = new THREE.PointLight(0xaaccff, 2, 20);
+    light.position.copy(position);
+    light.position.y = height / 2;
+    scene.add(light);
+    
+    // Animate lightning
+    const duration = 300; // 0.3 seconds
+    const startTime = performance.now();
+    
+    function animateLightning() {
+        const now = performance.now();
+        const elapsed = now - startTime;
+        const progress = elapsed / duration;
+        
+        if (progress < 1) {
+            // Flash light intensity
+            light.intensity = 2 * (1 - progress);
+            
+            requestAnimationFrame(animateLightning);
+        } else {
+            scene.remove(lightning);
+            scene.remove(light);
+        }
+    }
+    
+    requestAnimationFrame(animateLightning);
+}
+
+// Additional helper functions that might be needed
+function fadeOutAndRemove(object) {
+    const duration = 500; // 0.5 seconds
+    const startTime = performance.now();
+    const startOpacity = object.material.opacity;
+    
+    function animate() {
+        const now = performance.now();
+        const elapsed = now - startTime;
+        const progress = Math.min(elapsed / duration, 1);
+        
+        if (progress < 1) {
+            // Fade out
+            object.material.opacity = startOpacity * (1 - progress);
+            requestAnimationFrame(animate);
+        } else {
+            // Remove object
+            if (object.parent) {
+                scene.remove(object);
+            }
+        }
+    }
+    
+    requestAnimationFrame(animate);
+}
+
+// Function to create a summoning visual effect
+function createSummonEffect(position) {
+    // Create a ring pulse effect for the summon
+    const ringGeometry = new THREE.RingGeometry(0.5, 1, 32);
+    const ringMaterial = new THREE.MeshBasicMaterial({
+        color: 0xff3300,
+        transparent: true,
+        opacity: 0.8,
+        side: THREE.DoubleSide
+    });
+    
+    const ring = new THREE.Mesh(ringGeometry, ringMaterial);
+    ring.position.copy(position);
+    ring.position.y = 0.1; // Just above ground
+    ring.rotation.x = -Math.PI / 2; // Lay flat on ground
+    
+    scene.add(ring);
+    
+    // Create vertical energy beam
+    const beamGeometry = new THREE.CylinderGeometry(0.5, 0.5, 15, 16);
+    const beamMaterial = new THREE.MeshBasicMaterial({
+        color: 0xff5500,
+        transparent: true,
+        opacity: 0.6
+    });
+    
+    const beam = new THREE.Mesh(beamGeometry, beamMaterial);
+    beam.position.copy(position);
+    beam.position.y += 7.5; // Position beam above ground
+    
+    scene.add(beam);
+    
+    // Add pulsing light
+    const light = new THREE.PointLight(0xff3300, 2, 10);
+    light.position.copy(position);
+    light.position.y += 1;
+    scene.add(light);
+    
+    // Animate the summon effect
+    const duration = 2000; // 2 seconds
+    const startTime = performance.now();
+    
+    function animateSummonEffect() {
+        const now = performance.now();
+        const elapsed = now - startTime;
+        const progress = Math.min(elapsed / duration, 1);
+        
+        // Expand ring
+        const ringScale = 1 + progress * 8;
+        ring.scale.set(ringScale, ringScale, 1);
+        
+        // Fade out ring and beam as they expand
+        ring.material.opacity = 0.8 * (1 - progress);
+        beam.material.opacity = 0.6 * (1 - progress);
+        
+        // Pulse light intensity
+        light.intensity = 2 * (1 - progress) * (0.7 + 0.3 * Math.sin(progress * Math.PI * 8));
+        
+        if (progress < 1) {
+            requestAnimationFrame(animateSummonEffect);
+        } else {
+            // Remove objects when animation is complete
+            scene.remove(ring);
+            scene.remove(beam);
+            scene.remove(light);
+        }
+    }
+    
+    requestAnimationFrame(animateSummonEffect);
+}
+
+// Function to create the Warden Boss (Round 10)
+function spawnWardenBoss(config) {
+    // Create base mesh
+    const geometry = new THREE.BoxGeometry(
+        config.size.width,
+        config.size.height,
+        config.size.depth
+    );
+    
+    const material = new THREE.MeshPhongMaterial({ 
+        color: config.color,
+        emissive: 0x330000,
+        shininess: 30,
+    });
+    
+    const boss = new THREE.Mesh(geometry, material);
+    
+    // Position boss at center of map, but further back
+    const spawnRadius = 60;
+    const angle = Math.random() * Math.PI * 2;
+    boss.position.x = Math.cos(angle) * spawnRadius;
+    boss.position.z = Math.sin(angle) * spawnRadius;
+    boss.position.y = config.size.height / 2;
+    
+    // Add boss metadata
+    boss.userData = {
+        type: ENEMY_TYPES.WARDEN_BOSS,
+        health: config.health,
+        maxHealth: config.health,
+        speed: config.speed,
+        damage: config.damage,
+        attackRange: config.attackRange,
+        lastAttackTime: 0,
+        attackCooldown: config.attackCooldown,
+        
+        // Shield wall ability
+        shieldWallCooldown: config.shieldWallCooldown,
+        shieldWallDuration: config.shieldWallDuration,
+        lastShieldWallTime: 0,
+        shieldActive: false,
+        shieldMesh: null,
+        
+        // Ground slam ability
+        groundSlamCooldown: config.groundSlamCooldown,
+        groundSlamRange: config.groundSlamRange,
+        groundSlamDamage: config.groundSlamDamage,
+        lastGroundSlamTime: 0,
+        
+        // Summon ability
+        summonCooldown: config.summonCooldown,
+        summonCount: config.summonCount,
+        lastSummonTime: 0
+    };
+    
+    // Add boss to scene and tracking arrays
+    scene.add(boss);
+    enemies.push(boss);
+    activeEnemies.push(boss);
+    
+    // Show boss introduction message
+    showNotification("The Warden has appeared!", 5000);
+    
+    return boss;
+}
+
+// Function to create the Phantom Boss (Round 15)
+function spawnPhantomBoss(config) {
+    // Create base mesh with more ethereal/translucent appearance
+    const geometry = new THREE.BoxGeometry(
+        config.size.width,
+        config.size.height,
+        config.size.depth
+    );
+    
+    const material = new THREE.MeshPhongMaterial({ 
+        color: config.color,
+        emissive: 0x220033,
+        transparent: true,
+        opacity: 0.8,
+        shininess: 50
+    });
+    
+    const boss = new THREE.Mesh(geometry, material);
+    
+    // Position boss
+    const spawnRadius = 50;
+    const angle = Math.random() * Math.PI * 2;
+    boss.position.x = Math.cos(angle) * spawnRadius;
+    boss.position.z = Math.sin(angle) * spawnRadius;
+    boss.position.y = config.size.height / 2;
+    
+    // Add boss metadata
+    boss.userData = {
+        type: ENEMY_TYPES.PHANTOM_BOSS,
+        health: config.health,
+        maxHealth: config.health,
+        speed: config.speed,
+        damage: config.damage,
+        attackRange: config.attackRange,
+        lastAttackTime: 0,
+        attackCooldown: config.attackCooldown,
+        
+        // Teleport ability
+        teleportCooldown: config.teleportCooldown,
+        teleportRange: config.teleportRange,
+        lastTeleportTime: 0,
+        
+        // Clone ability
+        cloneCooldown: config.cloneCooldown,
+        cloneCount: config.cloneCount,
+        cloneDuration: config.cloneDuration,
+        lastCloneTime: 0,
+        activeClones: [],
+        
+        // Void zone ability
+        voidZoneCooldown: config.voidZoneCooldown,
+        voidZoneCount: config.voidZoneCount,
+        voidZoneDuration: config.voidZoneDuration,
+        voidZoneDamage: config.voidZoneDamage,
+        lastVoidZoneTime: 0,
+        activeVoidZones: [],
+        
+        // Phase shift ability
+        phaseShiftCooldown: config.phaseShiftCooldown,
+        phaseDuration: config.phaseDuration,
+        lastPhaseShiftTime: 0,
+        phaseActive: false
+    };
+    
+    // Add purple glow effect
+    addGlowEffect(boss, 0x8800cc);
+    
+    // Add boss to scene and tracking arrays
+    scene.add(boss);
+    enemies.push(boss);
+    activeEnemies.push(boss);
+    
+    // Show boss introduction message
+    showNotification("The Phantom has manifested!", 5000);
+    
+    return boss;
+}
+
+// Function to create the Mega Boss (Round 20)
+function spawnMegaBoss(config) {
+    // Create base mesh with imposing appearance
+    const geometry = new THREE.BoxGeometry(
+        config.size.width,
+        config.size.height,
+        config.size.depth
+    );
+    
+    // Initial phase 1 material (similar to Warden boss)
+    const material = new THREE.MeshPhongMaterial({ 
+        color: 0x880000, // Start with Warden colors
+        emissive: 0x330000,
+        shininess: 40
+    });
+    
+    const boss = new THREE.Mesh(geometry, material);
+    
+    // Position boss in center of the map
+    boss.position.set(0, config.size.height / 2, 0);
+    
+    // Add boss metadata including all abilities
+    boss.userData = {
+        type: ENEMY_TYPES.MEGA_BOSS,
+        health: config.health,
+        maxHealth: config.health,
+        speed: config.speed,
+        damage: config.damage,
+        attackRange: config.attackRange,
+        lastAttackTime: 0,
+        attackCooldown: config.attackCooldown,
+        
+        // Phase tracking
+        currentPhase: 1,
+        phaseThresholds: config.phaseThresholds,
+        phaseColors: [0x880000, 0x8800cc, 0xcc0088], // Color for each phase
+        
+        // Phase 1: Warden abilities
+        shieldWallCooldown: config.shieldWallCooldown,
+        shieldWallDuration: config.shieldWallDuration,
+        lastShieldWallTime: 0,
+        shieldActive: false,
+        shieldMesh: null,
+        
+        groundSlamCooldown: config.groundSlamCooldown,
+        groundSlamRange: config.groundSlamRange,
+        groundSlamDamage: config.groundSlamDamage,
+        lastGroundSlamTime: 0,
+        
+        summonCooldown: config.summonCooldown,
+        summonCount: config.summonCount,
+        lastSummonTime: 0,
+        
+        // Phase 2: Phantom abilities
+        teleportCooldown: config.teleportCooldown,
+        teleportRange: config.teleportRange,
+        lastTeleportTime: 0,
+        
+        cloneCooldown: config.cloneCooldown,
+        cloneCount: config.cloneCount,
+        cloneDuration: config.cloneDuration,
+        lastCloneTime: 0,
+        activeClones: [],
+        
+        voidZoneCooldown: config.voidZoneCooldown,
+        voidZoneCount: config.voidZoneCount,
+        voidZoneDuration: config.voidZoneDuration,
+        voidZoneDamage: config.voidZoneDamage,
+        lastVoidZoneTime: 0,
+        activeVoidZones: [],
+        
+        // Phase 3: Ultimate abilities
+        deathRayCooldown: config.deathRayCooldown,
+        deathRayDamage: config.deathRayDamage,
+        deathRayDuration: config.deathRayDuration,
+        lastDeathRayTime: 0,
+        deathRayActive: false,
+        
+        meteorCooldown: config.meteorCooldown,
+        meteorCount: config.meteorCount,
+        meteorDamage: config.meteorDamage,
+        lastMeteorTime: 0,
+        
+        realityWarpCooldown: config.realityWarpCooldown,
+        realityWarpDuration: config.realityWarpDuration,
+        lastRealityWarpTime: 0,
+        realityWarpActive: false
+    };
+    
+    // Add initial glow effect matching phase 1
+    addGlowEffect(boss, 0x880000);
+    
+    // Add boss to scene and tracking arrays
+    scene.add(boss);
+    enemies.push(boss);
+    activeEnemies.push(boss);
+    
+    // Create a dramatic entrance effect
+    createBossEntranceEffect(boss);
+    
+    // Show boss introduction message
+    showNotification("THE OVERLORD HAS ARRIVED!", 6000);
+    
+    return boss;
 }
 
 // Function to move enemy
@@ -4171,6 +6705,1296 @@ function resetGame() {
         }
     }
 }
+
+// Function to create a visual formation effect for void zones
+function createVoidZoneFormation(position, zoneObject) {
+    // Create particles that converge to form the void zone
+    const particleCount = 30;
+    const particles = [];
+    
+    // Create a light for the formation effect
+    const formationLight = new THREE.PointLight(0x8800ff, 2, 10);
+    formationLight.position.copy(position);
+    formationLight.position.y += 2;
+    scene.add(formationLight);
+    
+    // Create particles around the void zone
+    for (let i = 0; i < particleCount; i++) {
+        const particleGeometry = new THREE.SphereGeometry(0.2, 8, 8);
+        const particleMaterial = new THREE.MeshBasicMaterial({
+            color: 0x8800ff,
+            transparent: true,
+            opacity: 0.7
+        });
+        
+        const particle = new THREE.Mesh(particleGeometry, particleMaterial);
+        
+        // Position particles in a circle around the target position
+        const angle = (i / particleCount) * Math.PI * 2;
+        const radius = 8 + Math.random() * 4; // Random radius between 8-12
+        
+        particle.position.set(
+            position.x + Math.cos(angle) * radius,
+            position.y + Math.random() * 5,
+            position.z + Math.sin(angle) * radius
+        );
+        
+        scene.add(particle);
+        particles.push(particle);
+    }
+    
+    // Animate particles converging to form the void zone
+    const formationDuration = 1500; // 1.5 seconds
+    const startTime = performance.now();
+    
+    function animateFormation() {
+        const now = performance.now();
+        const elapsed = now - startTime;
+        const progress = Math.min(elapsed / formationDuration, 1);
+        
+        // Move particles toward center and fade out
+        for (const particle of particles) {
+            if (!particle.parent) continue;
+            
+            // Calculate direction to center
+            const direction = new THREE.Vector3()
+                .subVectors(position, particle.position)
+                .normalize();
+            
+            // Move particle toward center
+            particle.position.add(direction.multiplyScalar(0.2));
+            
+            // Shrink particle as it approaches center
+            const scale = 1 - progress * 0.8;
+            particle.scale.set(scale, scale, scale);
+            
+            // Fade out at the end
+            if (progress > 0.7) {
+                particle.material.opacity = 0.7 * (1 - (progress - 0.7) / 0.3);
+            }
+        }
+        
+        // Pulse light
+        if (formationLight.parent) {
+            formationLight.intensity = 2 * (1 - progress) * (0.7 + 0.3 * Math.sin(progress * Math.PI * 10));
+        }
+        
+        // Grow the void zone
+        if (zoneObject && zoneObject.parent) {
+            zoneObject.scale.set(progress, 1, progress);
+            zoneObject.material.opacity = progress * 0.5;
+        }
+        
+        if (progress < 1) {
+            requestAnimationFrame(animateFormation);
+        } else {
+            // Clean up particles and light when done
+            particles.forEach(particle => {
+                if (particle.parent) scene.remove(particle);
+            });
+            
+            if (formationLight.parent) scene.remove(formationLight);
+        }
+    }
+    
+    requestAnimationFrame(animateFormation);
+}
+
+// Function to create phase transition effect when Mega Boss changes phase
+function createPhaseTransitionEffect(boss) {
+    // Create expanding ring effect
+    const ringGeometry = new THREE.RingGeometry(0.5, 1, 32);
+    const ringMaterial = new THREE.MeshBasicMaterial({
+        color: boss.material.color.clone(),
+        transparent: true,
+        opacity: 0.7,
+        side: THREE.DoubleSide
+    });
+    
+    const ring = new THREE.Mesh(ringGeometry, ringMaterial);
+    ring.rotation.x = -Math.PI / 2; // Lay flat
+    ring.position.copy(boss.position);
+    ring.position.y = 0.1; // Just above ground
+    scene.add(ring);
+    
+    // Create vertical energy beam
+    const beamGeometry = new THREE.CylinderGeometry(1, 1, 20, 16);
+    const beamMaterial = new THREE.MeshBasicMaterial({
+        color: boss.material.color.clone(),
+        transparent: true,
+        opacity: 0.5
+    });
+    
+    const beam = new THREE.Mesh(beamGeometry, beamMaterial);
+    beam.position.copy(boss.position);
+    beam.position.y += 10; // Position beam above boss
+    scene.add(beam);
+    
+    // Create particles for explosion effect
+    const particles = [];
+    const particleCount = 40;
+    
+    for (let i = 0; i < particleCount; i++) {
+        const particleGeometry = new THREE.SphereGeometry(0.2, 8, 8);
+        const particleMaterial = new THREE.MeshBasicMaterial({
+            color: boss.material.color.clone(),
+            transparent: true,
+            opacity: 0.8
+        });
+        
+        const particle = new THREE.Mesh(particleGeometry, particleMaterial);
+        
+        // Position at boss
+        particle.position.copy(boss.position);
+        
+        // Random velocity outward
+        const angle = Math.random() * Math.PI * 2;
+        const height = Math.random() * 2;
+        const speed = 0.05 + Math.random() * 0.1;
+        
+        particle.userData = {
+            velocity: new THREE.Vector3(
+                Math.cos(angle) * speed,
+                height * 0.05,
+                Math.sin(angle) * speed
+            ),
+            lifetime: 1000 + Math.random() * 1000,
+            spawnTime: performance.now()
+        };
+        
+        scene.add(particle);
+        particles.push(particle);
+    }
+    
+    // Create intense light at boss position
+    const light = new THREE.PointLight(boss.material.color.clone(), 3, 20);
+    light.position.copy(boss.position);
+    light.position.y += 2;
+    scene.add(light);
+    
+    // Animate the phase transition effect
+    const duration = 2000; // 2 seconds
+    const startTime = performance.now();
+    
+    function animatePhaseTransition() {
+        const now = performance.now();
+        const elapsed = now - startTime;
+        const progress = Math.min(elapsed / duration, 1);
+        
+        // Expand ring
+        const ringScale = 1 + progress * 15;
+        ring.scale.set(ringScale, ringScale, 1);
+        
+        // Animate beam
+        beam.scale.y = 1 + Math.sin(progress * Math.PI) * 0.5;
+        beam.material.opacity = 0.5 * (1 - progress);
+        
+        // Pulse light
+        light.intensity = 3 * (1 - progress) * (0.7 + 0.3 * Math.sin(progress * Math.PI * 10));
+        
+        // Fade out ring
+        ring.material.opacity = 0.7 * (1 - progress);
+        
+        // Update particles
+        for (let i = particles.length - 1; i >= 0; i--) {
+            const particle = particles[i];
+            if (!particle.parent) continue;
+            
+            const particleElapsed = now - particle.userData.spawnTime;
+            
+            if (particleElapsed > particle.userData.lifetime) {
+                scene.remove(particle);
+                particles.splice(i, 1);
+                continue;
+            }
+            
+            // Update position
+            particle.position.add(particle.userData.velocity);
+            
+            // Fade out
+            const particleProgress = particleElapsed / particle.userData.lifetime;
+            particle.material.opacity = 0.8 * (1 - particleProgress);
+        }
+        
+        if (progress < 1) {
+            requestAnimationFrame(animatePhaseTransition);
+        } else {
+            // Clean up
+            scene.remove(ring);
+            scene.remove(beam);
+            scene.remove(light);
+            
+            // Remove any remaining particles
+            particles.forEach(particle => {
+                if (particle.parent) scene.remove(particle);
+            });
+        }
+    }
+    
+    requestAnimationFrame(animatePhaseTransition);
+}
+
+// Function to create warning visual for ground slam
+function createSlamWarning(position, radius) {
+    // Create warning ring on ground
+    const ringGeometry = new THREE.RingGeometry(radius - 0.5, radius, 32);
+    const ringMaterial = new THREE.MeshBasicMaterial({
+        color: 0xff3300,
+        transparent: true,
+        opacity: 0.6,
+        side: THREE.DoubleSide
+    });
+    
+    const ring = new THREE.Mesh(ringGeometry, ringMaterial);
+    ring.rotation.x = -Math.PI / 2; // Lay flat
+    ring.position.copy(position);
+    ring.position.y = 0.1; // Just above ground
+    scene.add(ring);
+    
+    // Create inner circle showing affected area
+    const circleGeometry = new THREE.CircleGeometry(radius - 0.5, 32);
+    const circleMaterial = new THREE.MeshBasicMaterial({
+        color: 0xff3300,
+        transparent: true,
+        opacity: 0.3,
+        side: THREE.DoubleSide
+    });
+    
+    const circle = new THREE.Mesh(circleGeometry, circleMaterial);
+    circle.rotation.x = -Math.PI / 2; // Lay flat
+    circle.position.copy(position);
+    circle.position.y = 0.11; // Slightly above ring
+    scene.add(circle);
+    
+    // Animate warning
+    const duration = 1500; // Should match the delay in wardenGroundSlam
+    const startTime = performance.now();
+    const pulseCount = 3; // Number of pulses during warning
+    
+    function animateWarning() {
+        const now = performance.now();
+        const elapsed = now - startTime;
+        const progress = elapsed / duration;
+        
+        if (progress >= 1) {
+            scene.remove(ring);
+            scene.remove(circle);
+            return;
+        }
+        
+        // Pulse the opacity
+        const pulseProgress = (progress * pulseCount) % 1;
+        const pulseOpacity = 0.3 + 0.7 * Math.sin(pulseProgress * Math.PI);
+        
+        ring.material.opacity = pulseOpacity;
+        circle.material.opacity = pulseOpacity * 0.5;
+        
+        // Gradually increase color intensity
+        const intensity = progress;
+        ring.material.color.setRGB(1, 0.3 * (1 - intensity), 0);
+        circle.material.color.setRGB(1, 0.3 * (1 - intensity), 0);
+        
+        requestAnimationFrame(animateWarning);
+    }
+    
+    requestAnimationFrame(animateWarning);
+}
+
+// Function to create charging effect for death ray
+function createDeathRayChargingEffect(boss) {
+    // Create glowing orb at boss position
+    const orbGeometry = new THREE.SphereGeometry(1, 16, 16);
+    const orbMaterial = new THREE.MeshBasicMaterial({
+        color: 0xff0000,
+        transparent: true,
+        opacity: 0.7
+    });
+    
+    const orb = new THREE.Mesh(orbGeometry, orbMaterial);
+    orb.position.copy(boss.position);
+    orb.position.y += boss.geometry.parameters.height * 0.6; // At upper part of boss
+    scene.add(orb);
+    
+    // Add glow effect
+    const glowGeometry = new THREE.SphereGeometry(1.5, 16, 16);
+    const glowMaterial = new THREE.MeshBasicMaterial({
+        color: 0xff3300,
+        transparent: true,
+        opacity: 0.3,
+        side: THREE.BackSide
+    });
+    
+    const glow = new THREE.Mesh(glowGeometry, glowMaterial);
+    glow.position.copy(orb.position);
+    scene.add(glow);
+    
+    // Create light
+    const light = new THREE.PointLight(0xff0000, 2, 10);
+    light.position.copy(orb.position);
+    scene.add(light);
+    
+    // Create particles converging toward the orb
+    const particles = [];
+    const particleCount = 30;
+    
+    for (let i = 0; i < particleCount; i++) {
+        const particleGeometry = new THREE.SphereGeometry(0.1, 8, 8);
+        const particleMaterial = new THREE.MeshBasicMaterial({
+            color: 0xff0000,
+            transparent: true,
+            opacity: 0.8
+        });
+        
+        const particle = new THREE.Mesh(particleGeometry, particleMaterial);
+        
+        // Random position around boss
+        const angle = Math.random() * Math.PI * 2;
+        const heightOffset = Math.random() * boss.geometry.parameters.height;
+        const radius = 3 + Math.random() * 4;
+        
+        particle.position.set(
+            boss.position.x + Math.cos(angle) * radius,
+            boss.position.y + heightOffset,
+            boss.position.z + Math.sin(angle) * radius
+        );
+        
+        // Store target position (the orb)
+        particle.userData = {
+            target: orb.position.clone(),
+            speed: 0.01 + Math.random() * 0.02,
+            startTime: performance.now(),
+            lifetime: 2000, // Should match charge time
+            spawnDelay: Math.random() * 1000 // Stagger spawning
+        };
+        
+        scene.add(particle);
+        particles.push(particle);
+    }
+    
+    // Store handles for cleanup
+    boss.userData.deathRayChargingEffects = {
+        orb,
+        glow,
+        light,
+        particles
+    };
+    
+    // Animate charging effect
+    const duration = 2000; // 2 seconds (should match the delay in the calling function)
+    const startTime = performance.now();
+    
+    function animateCharging() {
+        const now = performance.now();
+        const elapsed = now - startTime;
+        const progress = Math.min(elapsed / duration, 1);
+        
+        // Grow the orb
+        const scale = 1 + progress;
+        orb.scale.set(scale, scale, scale);
+        
+        // Pulse the glow
+        const pulseScale = 1 + 0.3 * Math.sin(progress * Math.PI * 10);
+        glow.scale.set(scale * pulseScale, scale * pulseScale, scale * pulseScale);
+        
+        // Increase light intensity
+        light.intensity = 2 + 3 * progress;
+        
+        // Update particles
+        for (const particle of particles) {
+            // Check if particle should be visible yet
+            if (now - startTime < particle.userData.spawnDelay) continue;
+            
+            // Direction to target
+            const direction = new THREE.Vector3().subVectors(particle.userData.target, particle.position);
+            const distance = direction.length();
+            
+            // Move faster as charging progresses
+            const speedMultiplier = 1 + progress * 3;
+            
+            if (distance > 0.1) {
+                // Move toward orb
+                particle.position.add(direction.normalize().multiplyScalar(particle.userData.speed * speedMultiplier));
+            } else {
+                // Reached the orb, reset to a new position
+                const newAngle = Math.random() * Math.PI * 2;
+                const newRadius = 5 + Math.random() * 5;
+                
+                particle.position.set(
+                    boss.position.x + Math.cos(newAngle) * newRadius,
+                    boss.position.y + Math.random() * boss.geometry.parameters.height,
+                    boss.position.z + Math.sin(newAngle) * newRadius
+                );
+            }
+        }
+        
+        if (progress < 1) {
+            requestAnimationFrame(animateCharging);
+        }
+        // Don't remove the effects after charging completes - they'll be used by the death ray
+    }
+    
+    requestAnimationFrame(animateCharging);
+}
+
+// Function to create the death ray beam effect
+function createDeathRayBeam(boss) {
+    // Use the charging effects if they exist
+    const chargingEffects = boss.userData.deathRayChargingEffects;
+    if (!chargingEffects) return;
+    
+    // Get orb position as the source of the beam
+    const sourcePosition = chargingEffects.orb.position.clone();
+    
+    // Calculate target direction (toward player with slight tracking)
+    const targetDirection = new THREE.Vector3().subVectors(player.position, sourcePosition).normalize();
+    
+    // Create beam geometry (long cylinder)
+    const beamGeometry = new THREE.CylinderGeometry(0.5, 0.5, 100, 16);
+    const beamMaterial = new THREE.MeshBasicMaterial({
+        color: 0xff0000,
+        transparent: true,
+        opacity: 0.7
+    });
+    
+    const beam = new THREE.Mesh(beamGeometry, beamMaterial);
+    
+    // Position and orient beam to point from source to target direction
+    beam.position.copy(sourcePosition);
+    
+    // Move the beam forward in the direction of the target
+    beam.position.add(targetDirection.clone().multiplyScalar(50));
+    
+    // Rotate the beam to align with the direction
+    beam.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), targetDirection);
+    
+    scene.add(beam);
+    
+    // Create core beam (smaller, brighter)
+    const coreGeometry = new THREE.CylinderGeometry(0.2, 0.2, 100, 16);
+    const coreMaterial = new THREE.MeshBasicMaterial({
+        color: 0xffffaa,
+        transparent: true,
+        opacity: 0.9
+    });
+    
+    const coreBeam = new THREE.Mesh(coreGeometry, coreMaterial);
+    coreBeam.position.copy(beam.position);
+    coreBeam.quaternion.copy(beam.quaternion);
+    scene.add(coreBeam);
+    
+    // Create impact flare at end of beam
+    const flareGeometry = new THREE.SphereGeometry(1, 16, 16);
+    const flareMaterial = new THREE.MeshBasicMaterial({
+        color: 0xffff00,
+        transparent: true,
+        opacity: 0.7
+    });
+    
+    const flare = new THREE.Mesh(flareGeometry, flareMaterial);
+    // Position flare at the beam's end toward the player direction
+    flare.position.copy(sourcePosition.clone().add(targetDirection.clone().multiplyScalar(100)));
+    scene.add(flare);
+    
+    // Create intense light at the source
+    const sourceLight = new THREE.PointLight(0xff0000, 3, 15);
+    sourceLight.position.copy(sourcePosition);
+    scene.add(sourceLight);
+    
+    // Create light at the impact point
+    const impactLight = new THREE.PointLight(0xff5500, 2, 10);
+    impactLight.position.copy(flare.position);
+    scene.add(impactLight);
+    
+    // Store handles for animation and cleanup
+    boss.userData.deathRayBeamEffects = {
+        beam,
+        coreBeam,
+        flare,
+        sourceLight,
+        impactLight,
+        targetDirection,
+        sourcePosition
+    };
+    
+    // Animate the beam
+    const duration = boss.userData.deathRayDuration || 5000;
+    const startTime = performance.now();
+    
+    function animateDeathRay() {
+        const now = performance.now();
+        const elapsed = now - startTime;
+        const progress = elapsed / duration;
+        
+        if (progress >= 1 || !boss.parent) {
+            // Clean up effects
+            scene.remove(beam);
+            scene.remove(coreBeam);
+            scene.remove(flare);
+            scene.remove(sourceLight);
+            scene.remove(impactLight);
+            
+            // Clean up charging effects
+            if (chargingEffects) {
+                scene.remove(chargingEffects.orb);
+                scene.remove(chargingEffects.glow);
+                scene.remove(chargingEffects.light);
+                
+                chargingEffects.particles.forEach(particle => {
+                    if (particle.parent) scene.remove(particle);
+                });
+                
+                delete boss.userData.deathRayChargingEffects;
+                delete boss.userData.deathRayBeamEffects;
+            }
+            
+            boss.userData.deathRayActive = false;
+            return;
+        }
+        
+        // Update beam direction to slowly track player
+        const currentDirection = boss.userData.deathRayBeamEffects.targetDirection;
+        const newDirection = new THREE.Vector3().subVectors(player.position, sourcePosition).normalize();
+        
+        // Limit tracking speed (lerp factor)
+        const trackingSpeed = 0.02;
+        currentDirection.lerp(newDirection, trackingSpeed);
+        
+        // Update beam position and orientation
+        beam.position.copy(sourcePosition);
+        beam.position.add(currentDirection.clone().multiplyScalar(50));
+        beam.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), currentDirection);
+        
+        // Update core beam to match
+        coreBeam.position.copy(beam.position);
+        coreBeam.quaternion.copy(beam.quaternion);
+        
+        // Update flare position
+        flare.position.copy(sourcePosition.clone().add(currentDirection.clone().multiplyScalar(100)));
+        impactLight.position.copy(flare.position);
+        
+        // Pulse effects
+        const pulseIntensity = 0.8 + 0.2 * Math.sin(elapsed * 0.01);
+        sourceLight.intensity = 3 * pulseIntensity;
+        impactLight.intensity = 2 * pulseIntensity;
+        
+        // Animate core beam for energy flow effect
+        const flowOffset = (elapsed * 0.005) % 1;
+        coreMaterial.opacity = 0.7 + 0.3 * Math.sin(flowOffset * Math.PI * 10);
+        
+        requestAnimationFrame(animateDeathRay);
+    }
+    
+    requestAnimationFrame(animateDeathRay);
+}
+
+// Function to apply damage from death ray
+function applyDeathRayDamage(boss) {
+    if (!boss.userData.deathRayBeamEffects) return;
+    
+    // Get beam direction and source
+    const sourcePosition = boss.userData.deathRayBeamEffects.sourcePosition;
+    const direction = boss.userData.deathRayBeamEffects.targetDirection;
+    
+    // Create a damage interval
+    const damageInterval = setInterval(() => {
+        if (!boss.parent || !boss.userData.deathRayActive) {
+            clearInterval(damageInterval);
+            return;
+        }
+        
+        // Check if player is in the beam's path
+        // Calculate vector from source to player
+        const toPlayer = new THREE.Vector3().subVectors(player.position, sourcePosition);
+        
+        // Project this vector onto the beam direction
+        const projectionLength = toPlayer.dot(direction);
+        
+        // Shortest distance from player to beam line
+        const projection = direction.clone().multiplyScalar(projectionLength);
+        const closestPoint = sourcePosition.clone().add(projection);
+        const distanceToBeam = player.position.distanceTo(closestPoint);
+        
+        // Check if player is close enough to the beam to take damage
+        const beamRadius = 2; // Effective damage radius of beam
+        
+        if (distanceToBeam < beamRadius && projectionLength > 0) {
+            // Apply damage to player
+            takeDamage(boss.userData.deathRayDamage / 10); // Damage per tick
+            
+            // Visual effect for player taking damage
+            createHitEffect(player.position);
+        }
+        
+    }, 100); // Check damage every 100ms
+    
+    // Store interval for cleanup
+    boss.userData.deathRayDamageInterval = damageInterval;
+    
+    // Clean up interval when beam ends
+    setTimeout(() => {
+        clearInterval(damageInterval);
+    }, boss.userData.deathRayDuration);
+}
+
+// Function to create a warning indicator for meteor strikes
+function createMeteorWarning(position) {
+    // Create a red circle on the ground
+    const circleGeometry = new THREE.CircleGeometry(2, 32);
+    const circleMaterial = new THREE.MeshBasicMaterial({
+        color: 0xff0000,
+        transparent: true,
+        opacity: 0.5,
+        side: THREE.DoubleSide
+    });
+    
+    const circle = new THREE.Mesh(circleGeometry, circleMaterial);
+    circle.rotation.x = -Math.PI / 2; // Lay flat
+    circle.position.copy(position);
+    circle.position.y = 0.1; // Just above ground
+    scene.add(circle);
+    
+    // Create target rings
+    const ringGeometry = new THREE.RingGeometry(1.8, 2, 32);
+    const ringMaterial = new THREE.MeshBasicMaterial({
+        color: 0xff5500,
+        transparent: true,
+        opacity: 0.7,
+        side: THREE.DoubleSide
+    });
+    
+    const ring = new THREE.Mesh(ringGeometry, ringMaterial);
+    ring.rotation.x = -Math.PI / 2; // Lay flat
+    ring.position.copy(position);
+    ring.position.y = 0.12; // Just above circle
+    scene.add(ring);
+    
+    // Animate warning
+    const duration = 2000; // 2 seconds (should match delay in parent function)
+    const startTime = performance.now();
+    
+    function animateWarning() {
+        const now = performance.now();
+        const elapsed = now - startTime;
+        const progress = elapsed / duration;
+        
+        if (progress >= 1) {
+            scene.remove(circle);
+            scene.remove(ring);
+            return;
+        }
+        
+        // Pulse opacity
+        const pulseOpacity = 0.3 + 0.7 * Math.sin(progress * Math.PI * 5);
+        circle.material.opacity = pulseOpacity * 0.5;
+        ring.material.opacity = pulseOpacity * 0.7;
+        
+        // Shrink ring as time progresses (closing in effect)
+        const ringScale = 1.5 - 0.5 * progress;
+        ring.scale.set(ringScale, ringScale, 1);
+        
+        // Increase color intensity
+        const intensity = progress;
+        circle.material.color.setRGB(1, 0.3 * (1 - intensity), 0);
+        ring.material.color.setRGB(1, 0.2 * (1 - intensity), 0);
+        
+        requestAnimationFrame(animateWarning);
+    }
+    
+    requestAnimationFrame(animateWarning);
+}
+
+// Function to create meteor impact effect
+function createMeteorImpact(position, damage) {
+    // Create meteor object
+    const meteorGeometry = new THREE.SphereGeometry(1, 16, 16);
+    const meteorMaterial = new THREE.MeshBasicMaterial({
+        color: 0xff3300,
+        emissive: 0xff0000,
+        emissiveIntensity: 1
+    });
+    
+    const meteor = new THREE.Mesh(meteorGeometry, meteorMaterial);
+    
+    // Start position high in the sky
+    meteor.position.set(
+        position.x,
+        position.y + 50, // Start high above
+        position.z
+    );
+    
+    scene.add(meteor);
+    
+    // Add trail effect
+    const trail = [];
+    
+    // Create light
+    const light = new THREE.PointLight(0xff5500, 2, 10);
+    light.position.copy(meteor.position);
+    scene.add(light);
+    
+    // Animate meteor falling
+    const fallDuration = 1000; // 1 second
+    const startTime = performance.now();
+    
+    function animateMeteorFall() {
+        const now = performance.now();
+        const elapsed = now - startTime;
+        const progress = Math.min(elapsed / fallDuration, 1);
+        
+        if (progress >= 1) {
+            // Create explosion at impact
+            createExplosion(position, 3, damage);
+            
+            // Check if player is within damage radius
+            const distanceToPlayer = position.distanceTo(player.position);
+            if (distanceToPlayer < 3) {
+                takeDamage(damage * (1 - distanceToPlayer/3)); // Scale damage by distance
+            }
+            
+            // Add screen shake
+            addScreenShake(0.5, 500);
+            
+            // Remove meteor and light
+            scene.remove(meteor);
+            scene.remove(light);
+            
+            // Clean up trail particles
+            trail.forEach(particle => {
+                if (particle.parent) scene.remove(particle);
+            });
+            
+            return;
+        }
+        
+        // Update meteor position (cubic ease-in for acceleration)
+        const cubicProgress = progress * progress * progress;
+        meteor.position.y = 50 + (position.y - 50) * cubicProgress;
+        
+        // Add trail particles occasionally
+        if (Math.random() > 0.6) {
+            const trailGeometry = new THREE.SphereGeometry(0.3, 8, 8);
+            const trailMaterial = new THREE.MeshBasicMaterial({
+                color: 0xff3300,
+                transparent: true,
+                opacity: 0.8
+            });
+            
+            const particle = new THREE.Mesh(trailGeometry, trailMaterial);
+            particle.position.copy(meteor.position);
+            particle.userData = {
+                lifetime: 500,
+                spawnTime: now
+            };
+            
+            scene.add(particle);
+            trail.push(particle);
+        }
+        
+        // Update trail particles
+        for (let i = trail.length - 1; i >= 0; i--) {
+            const particle = trail[i];
+            const particleElapsed = now - particle.userData.spawnTime;
+            
+            if (particleElapsed > particle.userData.lifetime) {
+                scene.remove(particle);
+                trail.splice(i, 1);
+                continue;
+            }
+            
+            // Fade out
+            const particleProgress = particleElapsed / particle.userData.lifetime;
+            particle.material.opacity = 0.8 * (1 - particleProgress);
+            
+            // Shrink
+            const scale = 1 - particleProgress;
+            particle.scale.set(scale, scale, scale);
+        }
+        
+        // Update light position
+        light.position.copy(meteor.position);
+        
+        requestAnimationFrame(animateMeteorFall);
+    }
+    
+    requestAnimationFrame(animateMeteorFall);
+}
+
+// Function to create reality warp effect
+function createRealityWarpEffect() {
+    // We'll use a full-screen effect for this
+    const warpOverlay = document.createElement('div');
+    warpOverlay.id = 'realityWarp';
+    warpOverlay.style.cssText = `
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: radial-gradient(circle, transparent 20%, rgba(255, 0, 255, 0.1) 70%, rgba(255, 0, 255, 0.3) 100%);
+        pointer-events: none;
+        z-index: 1000;
+        animation: warpPulse 4s infinite alternate;
+        mix-blend-mode: screen;
+    `;
+    
+    // Add keyframe animation
+    const style = document.createElement('style');
+    style.textContent = `
+        @keyframes warpPulse {
+            0% { opacity: 0.3; filter: hue-rotate(0deg); }
+            50% { opacity: 0.6; filter: hue-rotate(180deg); }
+            100% { opacity: 0.3; filter: hue-rotate(360deg); }
+        }
+    `;
+    document.head.appendChild(style);
+    document.body.appendChild(warpOverlay);
+    
+    // Create distortion ripples in the 3D scene
+    const ripples = [];
+    const rippleCount = 3;
+    
+    for (let i = 0; i < rippleCount; i++) {
+        const rippleGeometry = new THREE.RingGeometry(2, 3, 32);
+        const rippleMaterial = new THREE.MeshBasicMaterial({
+            color: 0xff00ff,
+            transparent: true,
+            opacity: 0.2,
+            side: THREE.DoubleSide
+        });
+        
+        const ripple = new THREE.Mesh(rippleGeometry, rippleMaterial);
+        ripple.rotation.x = -Math.PI / 2; // Lay flat
+        ripple.position.copy(player.position);
+        ripple.position.y = 0.1; // Just above ground
+        
+        // Random initial scale and speed
+        ripple.userData = {
+            initialScale: 1 + i * 2,
+            pulseSpeed: 0.3 + i * 0.2
+        };
+        
+        scene.add(ripple);
+        ripples.push(ripple);
+    }
+    
+    // Add floating particles for ethereal effect
+    const particles = [];
+    const particleCount = 30;
+    
+    for (let i = 0; i < particleCount; i++) {
+        const particleGeometry = new THREE.SphereGeometry(0.1, 8, 8);
+        const particleMaterial = new THREE.MeshBasicMaterial({
+            color: new THREE.Color().setHSL(Math.random(), 1, 0.5),
+            transparent: true,
+            opacity: 0.7
+        });
+        
+        const particle = new THREE.Mesh(particleGeometry, particleMaterial);
+        
+        // Position randomly around player
+        const radius = 10 + Math.random() * 10;
+        const angle = Math.random() * Math.PI * 2;
+        
+        particle.position.set(
+            player.position.x + Math.cos(angle) * radius,
+            player.position.y + Math.random() * 5,
+            player.position.z + Math.sin(angle) * radius
+        );
+        
+        // Set random movement parameters
+        particle.userData = {
+            speed: 0.02 + Math.random() * 0.02,
+            angle: Math.random() * Math.PI * 2,
+            verticalSpeed: 0.01 + Math.random() * 0.01,
+            verticalDir: Math.random() > 0.5 ? 1 : -1,
+            pulseSpeed: 0.5 + Math.random()
+        };
+        
+        scene.add(particle);
+        particles.push(particle);
+    }
+    
+    // Store handles for animation and cleanup
+    window.realityWarpEffects = {
+        overlay: warpOverlay,
+        ripples,
+        particles,
+        active: true
+    };
+    
+    // Animate the reality warp effect
+    function animateRealityWarp() {
+        if (!window.realityWarpEffects || !window.realityWarpEffects.active) return;
+        
+        const now = performance.now() * 0.001; // Convert to seconds
+        
+        // Update ripples - they follow the player
+        for (const ripple of ripples) {
+            if (!ripple.parent) continue;
+            
+            // Update position to follow player
+            ripple.position.x = player.position.x;
+            ripple.position.z = player.position.z;
+            
+            // Pulse scale
+            const pulseScale = ripple.userData.initialScale + Math.sin(now * ripple.userData.pulseSpeed) * 1;
+            ripple.scale.set(pulseScale, pulseScale, 1);
+            
+            // Cycle colors
+            const hue = (now * 0.1) % 1;
+            ripple.material.color.setHSL(hue, 1, 0.5);
+        }
+        
+        // Update particles
+        for (const particle of particles) {
+            if (!particle.parent) continue;
+            
+            // Update angle for circular movement
+            particle.userData.angle += particle.userData.speed;
+            
+            // Calculate center (relative to player)
+            const centerX = player.position.x;
+            const centerZ = player.position.z;
+            
+            // Radius from center
+            const dx = particle.position.x - centerX;
+            const dz = particle.position.z - centerZ;
+            const radius = Math.sqrt(dx * dx + dz * dz);
+            
+            // Update position for circular motion
+            particle.position.x = centerX + Math.cos(particle.userData.angle) * radius;
+            particle.position.z = centerZ + Math.sin(particle.userData.angle) * radius;
+            
+            // Vertical oscillation
+            particle.position.y += particle.userData.verticalSpeed * particle.userData.verticalDir;
+            
+            // Reverse vertical direction if too high or too low
+            if (particle.position.y > 8 || particle.position.y < 0.1) {
+                particle.userData.verticalDir *= -1;
+            }
+            
+            // Pulse scale and color
+            const time = now * particle.userData.pulseSpeed;
+            const scale = 1 + 0.5 * Math.sin(time);
+            particle.scale.set(scale, scale, scale);
+            
+            // Cycle colors
+            const hue = (time * 0.1) % 1;
+            particle.material.color.setHSL(hue, 1, 0.5);
+        }
+        
+        requestAnimationFrame(animateRealityWarp);
+    }
+    
+    animateRealityWarp();
+}
+
+// Function to apply gameplay effects during reality warp
+function applyRealityWarpEffects() {
+    // Store original movement settings
+    window.originalMovementSettings = {
+        gravity: 0.008, // Assuming this is the normal gravity
+        moveSpeedMultiplier: 1.0
+    };
+    
+    // Make gravity inconsistent
+    GRAVITY = 0.004; // Half gravity during warp
+    
+    // Apply screen distortion via CSS filter
+    document.getElementById('gameScene').style.filter = "hue-rotate(0deg)";
+    document.getElementById('gameScene').style.animation = "hueRotate 5s infinite linear";
+    
+    // Add style for hue rotation
+    const style = document.createElement('style');
+    style.textContent = `
+        @keyframes hueRotate {
+            0% { filter: hue-rotate(0deg) blur(0px); }
+            50% { filter: hue-rotate(180deg) blur(1px); }
+            100% { filter: hue-rotate(360deg) blur(0px); }
+        }
+    `;
+    document.head.appendChild(style);
+    
+    // Add inverted controls randomly
+    window.realityWarpInterval = setInterval(() => {
+        // 20% chance to invert controls each second
+        if (Math.random() > 0.8) {
+            invertControls();
+            
+            // Show notification
+            showNotification("Reality Shifting: Controls Inverted!", 1000);
+            
+            // Return to normal after 1-3 seconds
+            setTimeout(resetControls, 1000 + Math.random() * 2000);
+        }
+    }, 2000);
+}
+
+// Function to invert controls
+function invertControls() {
+    // Save original key states
+    window.originalKeys = {};
+    for (let key in keys) {
+        window.originalKeys[key] = key;
+    }
+    
+    // Swap WASD
+    const temp = keys.w;
+    keys.w = keys.s;
+    keys.s = temp;
+    
+    const tempAD = keys.a;
+    keys.a = keys.d;
+    keys.d = tempAD;
+}
+
+// Function to reset controls
+function resetControls() {
+    // If original keys saved, restore them
+    if (window.originalKeys) {
+        for (let key in window.originalKeys) {
+            keys[key] = window.originalKeys[key];
+        }
+    }
+}
+
+// Function to reset reality warp effects
+function resetRealityWarpEffects() {
+    // Remove overlay
+    if (window.realityWarpEffects) {
+        // Remove overlay
+        if (window.realityWarpEffects.overlay && window.realityWarpEffects.overlay.parentNode) {
+            window.realityWarpEffects.overlay.parentNode.removeChild(window.realityWarpEffects.overlay);
+        }
+        
+        // Stop tracking ripples and particles
+        window.realityWarpEffects.ripples.forEach(ripple => {
+            if (ripple.parent) scene.remove(ripple);
+        });
+        
+        window.realityWarpEffects.particles.forEach(particle => {
+            if (particle.parent) scene.remove(particle);
+        });
+        
+        // Mark as inactive
+        window.realityWarpEffects.active = false;
+    }
+    
+    // Clear interval
+    if (window.realityWarpInterval) {
+        clearInterval(window.realityWarpInterval);
+        window.realityWarpInterval = null;
+    }
+    
+    // Restore original movement settings
+    if (window.originalMovementSettings) {
+        GRAVITY = window.originalMovementSettings.gravity;
+    }
+    
+    // Reset controls
+    resetControls();
+    
+    // Remove screen effects
+    document.getElementById('gameScene').style.filter = "none";
+    document.getElementById('gameScene').style.animation = "none";
+}
+
+// Function to create visual effect for void zone damage
+function createVoidDamageEffect(position) {
+    // Create purple particle burst at player position
+    const particles = [];
+    const particleCount = 15;
+    
+    for (let i = 0; i < particleCount; i++) {
+        const geometry = new THREE.SphereGeometry(0.05 + Math.random() * 0.1, 8, 8);
+        const material = new THREE.MeshBasicMaterial({
+            color: 0x8800ff,
+            transparent: true,
+            opacity: 0.8
+        });
+        
+        const particle = new THREE.Mesh(geometry, material);
+        
+        // Position at player but slightly random
+        particle.position.copy(position);
+        particle.position.x += (Math.random() - 0.5) * 0.5;
+        particle.position.y += 1 + Math.random() * 0.5; // Above ground
+        particle.position.z += (Math.random() - 0.5) * 0.5;
+        
+        // Random velocity
+        particle.userData = {
+            velocity: new THREE.Vector3(
+                (Math.random() - 0.5) * 0.05,
+                Math.random() * 0.1,
+                (Math.random() - 0.5) * 0.05
+            ),
+            lifetime: 500 + Math.random() * 200,
+            spawnTime: performance.now()
+        };
+        
+        scene.add(particle);
+        particles.push(particle);
+    }
+    
+    // Animate particles
+    function animateParticles() {
+        const now = performance.now();
+        let allDone = true;
+        
+        for (let i = particles.length - 1; i >= 0; i--) {
+            const particle = particles[i];
+            const elapsed = now - particle.userData.spawnTime;
+            
+            if (elapsed > particle.userData.lifetime) {
+                scene.remove(particle);
+                particles.splice(i, 1);
+                continue;
+            }
+            
+            // Still have active particles
+            allDone = false;
+            
+            // Move particle
+            particle.position.add(particle.userData.velocity);
+            
+            // Fade out
+            const progress = elapsed / particle.userData.lifetime;
+            particle.material.opacity = 0.8 * (1 - progress);
+            
+            // Shrink
+            const scale = 1 - progress * 0.7;
+            particle.scale.set(scale, scale, scale);
+        }
+        
+        if (!allDone) {
+            requestAnimationFrame(animateParticles);
+        }
+    }
+    
+    requestAnimationFrame(animateParticles);
+}
+
+// Function to create a visual effect when the shield is activated
+function createShieldActivationEffect(boss) {
+    // Create expanding ring effect
+    const ringGeometry = new THREE.RingGeometry(0.5, 1, 32);
+    const ringMaterial = new THREE.MeshBasicMaterial({
+        color: 0xff3300,
+        transparent: true,
+        opacity: 0.7,
+        side: THREE.DoubleSide
+    });
+    
+    const ring = new THREE.Mesh(ringGeometry, ringMaterial);
+    ring.rotation.x = -Math.PI / 2; // Lay flat
+    ring.position.copy(boss.position);
+    ring.position.y = 0.1; // Just above ground
+    scene.add(ring);
+    
+    // Create particles for additional effect
+    const particles = [];
+    const particleCount = 30;
+    
+    // Create a pulse light
+    const pulseLight = new THREE.PointLight(0xff3300, 2, 15);
+    pulseLight.position.copy(boss.position);
+    pulseLight.position.y += 2;
+    scene.add(pulseLight);
+    
+    for (let i = 0; i < particleCount; i++) {
+        const particleGeometry = new THREE.SphereGeometry(0.1, 8, 8);
+        const particleMaterial = new THREE.MeshBasicMaterial({
+            color: 0xff3300,
+            transparent: true,
+            opacity: 0.7
+        });
+        
+        const particle = new THREE.Mesh(particleGeometry, particleMaterial);
+        
+        // Position particles around the boss
+        const angle = (i / particleCount) * Math.PI * 2;
+        const radius = boss.geometry.parameters.width;
+        
+        particle.position.set(
+            boss.position.x + Math.cos(angle) * radius,
+            boss.position.y + Math.random() * boss.geometry.parameters.height,
+            boss.position.z + Math.sin(angle) * radius
+        );
+        
+        // Set velocity - particles move outward
+        particle.userData = {
+            velocity: new THREE.Vector3(
+                Math.cos(angle) * 0.1,
+                Math.random() * 0.05,
+                Math.sin(angle) * 0.1
+            ),
+            lifetime: 800 + Math.random() * 400,
+            spawnTime: performance.now()
+        };
+        
+        scene.add(particle);
+        particles.push(particle);
+    }
+    
+    // Animate the shield activation effect
+    const duration = 1500; // 1.5 seconds
+    const startTime = performance.now();
+    
+    function animateShieldEffect() {
+        const now = performance.now();
+        const elapsed = now - startTime;
+        const progress = Math.min(elapsed / duration, 1);
+        
+        // Expand ring
+        const currentScale = 1 + progress * 10;
+        ring.scale.set(currentScale, currentScale, 1);
+        
+        // Fade out ring
+        ring.material.opacity = 0.7 * (1 - progress);
+        
+        // Pulse light
+        if (pulseLight.parent) {
+            pulseLight.intensity = 2 * (1 - progress) * (0.7 + 0.3 * Math.sin(progress * Math.PI * 10));
+        }
+        
+        // Update particles
+        for (let i = particles.length - 1; i >= 0; i--) {
+            const particle = particles[i];
+            const particleElapsed = now - particle.userData.spawnTime;
+            
+            if (particleElapsed > particle.userData.lifetime) {
+                scene.remove(particle);
+                particles.splice(i, 1);
+                continue;
+            }
+            
+            // Move particle
+            particle.position.add(particle.userData.velocity);
+            
+            // Fade out
+            const particleProgress = particleElapsed / particle.userData.lifetime;
+            particle.material.opacity = 0.7 * (1 - particleProgress);
+        }
+        
+        if (progress < 1) {
+            requestAnimationFrame(animateShieldEffect);
+        } else {
+            // Clean up
+            scene.remove(ring);
+            scene.remove(pulseLight);
+            
+            // Remove any remaining particles
+            particles.forEach(particle => {
+                if (particle.parent) {
+                    scene.remove(particle);
+                }
+            });
+        }
+    }
+    
+    requestAnimationFrame(animateShieldEffect);
+}
+
 
 // Function to create the coin display in the HUD
 function createCoinDisplay() {
