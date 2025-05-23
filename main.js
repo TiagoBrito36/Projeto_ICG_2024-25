@@ -188,7 +188,7 @@ const enemyConfigs = {
         speed: 0.025,
         damage: 25,
         size: { width: 1.6, height: 3.6, depth: 1.6 },
-        color: 0x990000,
+        color: 0x4444ff,
         attackRange: 2.5,
         attackCooldown: 2000,
         spawnDelay: 1500
@@ -198,7 +198,7 @@ const enemyConfigs = {
         speed: 0.05,
         damage: 10,
         size: { width: 0.8, height: 3.6, depth: 0.8 },
-        color: 0xff6600,
+        color: 0xffff00,
         attackRange: 15,
         attackCooldown: 2000,
         projectileSpeed: 0.3,
@@ -211,7 +211,7 @@ const enemyConfigs = {
         speed: 0.1, // 2x normal speed
         damage: 8,
         size: { width: 0.6, height: 1.4, depth: 0.6 },
-        color: 0xff3333,
+        color: 0x00ffff,
         attackRange: 1.8,
         attackCooldown: 800,
         spawnDelay: 800,
@@ -222,7 +222,7 @@ const enemyConfigs = {
         speed: 0.06,
         damage: 40, // High damage on explosion
         size: { width: 1.0, height: 1.6, depth: 1.0 },
-        color: 0xffaa00,
+        color: 0xff9900,
         attackRange: 3, // Explosion radius
         attackCooldown: 1000,
         spawnDelay: 1200,
@@ -234,7 +234,7 @@ const enemyConfigs = {
         speed: 0.03,
         damage: 15,
         size: { width: 1.2, height: 2.0, depth: 0.8 },
-        color: 0x0088ff,
+        color: 0x8844ff,
         attackRange: 2.2,
         attackCooldown: 1500,
         spawnDelay: 1800,
@@ -246,7 +246,7 @@ const enemyConfigs = {
         speed: 0.05,
         damage: 12,
         size: { width: 0.8, height: 1.8, depth: 0.8 },
-        color: 0x8800ff,
+        color: 0xff00ff,
         attackRange: 10,
         attackCooldown: 1800,
         spawnDelay: 1500,
@@ -3633,6 +3633,518 @@ function spawnEnemiesFromQueue(queue) {
     }, config.spawnDelay);
 }
 
+// Function to create the First Boss (Round 5) with unique abilities
+function spawnFirstBoss(config) {
+    // Create base mesh with distinct appearance
+    const geometry = new THREE.BoxGeometry(
+        config.size.width,
+        config.size.height,
+        config.size.depth
+    );
+    
+    const material = new THREE.MeshPhongMaterial({ 
+        color: 0xcc3300, // Distinctive red-orange color
+        emissive: 0x330000,
+        shininess: 30,
+    });
+    
+    const boss = new THREE.Mesh(geometry, material);
+    
+    // Position boss at center of map, but further back
+    const spawnRadius = 50;
+    const angle = Math.random() * Math.PI * 2;
+    boss.position.x = Math.cos(angle) * spawnRadius;
+    boss.position.z = Math.sin(angle) * spawnRadius;
+    boss.position.y = config.size.height / 2;
+    
+    // Add boss metadata with unique abilities
+    boss.userData = {
+        type: ENEMY_TYPES.BOSS,
+        health: config.health,
+        maxHealth: config.health,
+        speed: config.speed,
+        damage: config.damage,
+        attackRange: config.attackRange,
+        lastAttackTime: 0,
+        attackCooldown: config.attackCooldown,
+        material: material,
+        
+        // Fire ring ability (close-range defense)
+        fireRingCooldown: 8000,
+        fireRingDuration: 3000,
+        fireRingDamage: 15,
+        fireRingRadius: 4,
+        lastFireRingTime: 0,
+        activeFireRing: null,
+        
+        // Charge attack (gap closer)
+        chargeCooldown: 10000,
+        chargeDuration: 1500,
+        chargeDamage: 25,
+        lastChargeTime: 0,
+        isCharging: false,
+        chargeDirection: null,
+        chargeStartTime: 0,
+        
+        // Energy bolts (ranged attack)
+        boltCount: 3,
+        boltDamage: 15,
+        boltSpeed: 0.2,
+        boltSpread: Math.PI / 12 // 15 degrees spread
+    };
+    
+    // Add boss to scene and tracking arrays
+    scene.add(boss);
+    enemies.push(boss);
+    activeEnemies.push(boss);
+    
+    // Create a dramatic entrance effect
+    createBossEntranceEffect(boss);
+    
+    // Show boss introduction message
+    showNotification("The Guardian has appeared!", 5000);
+    
+    return boss;
+}
+
+// Boss ability: Fire Ring
+function bossActivateFireRing(boss) {
+    // Create fire ring visual effect
+    const ringGeometry = new THREE.RingGeometry(boss.userData.fireRingRadius - 0.5, boss.userData.fireRingRadius, 32);
+    const ringMaterial = new THREE.MeshBasicMaterial({
+        color: 0xff3300,
+        transparent: true,
+        opacity: 0.7,
+        side: THREE.DoubleSide
+    });
+    
+    const ring = new THREE.Mesh(ringGeometry, ringMaterial);
+    ring.rotation.x = -Math.PI / 2; // Lay flat
+    ring.position.copy(boss.position);
+    ring.position.y = 0.2; // Just above ground
+    scene.add(ring);
+    
+    // Create fire particles
+    const particles = [];
+    const particleCount = 40;
+    
+    for (let i = 0; i < particleCount; i++) {
+        const particleGeometry = new THREE.SphereGeometry(0.2 + Math.random() * 0.3, 8, 8);
+        const particleMaterial = new THREE.MeshBasicMaterial({
+            color: new THREE.Color().setHSL(
+                0.05 + Math.random() * 0.05, // Orange-red hue
+                0.7 + Math.random() * 0.3,  // High saturation
+                0.5 + Math.random() * 0.3   // Medium-high lightness
+            ),
+            transparent: true,
+            opacity: 0.8
+        });
+        
+        const particle = new THREE.Mesh(particleGeometry, particleMaterial);
+        
+        // Position around circle
+        const angle = (i / particleCount) * Math.PI * 2;
+        const radius = boss.userData.fireRingRadius;
+        
+        particle.position.set(
+            boss.position.x + Math.cos(angle) * radius,
+            boss.position.y + Math.random() * 1.5,
+            boss.position.z + Math.sin(angle) * radius
+        );
+        
+        // Random velocity - rising and circling
+        particle.userData = {
+            angle: angle,
+            radius: radius,
+            centerX: boss.position.x,
+            centerZ: boss.position.z,
+            rotateSpeed: (Math.random() - 0.5) * 0.02,
+            riseSpeed: 0.05 + Math.random() * 0.05
+        };
+        
+        scene.add(particle);
+        particles.push(particle);
+    }
+    
+    // Store ring and particles for damage checks and cleanup
+    boss.userData.activeFireRing = {
+        ring: ring,
+        particles: particles,
+        createTime: performance.now(),
+        damageInterval: null
+    };
+    
+    // Show notification
+    showNotification("Fire Ring activated!", 2000);
+    
+    // Set boss emissive to glow during fire ring
+    boss.material.emissive.setHex(0x661100);
+    
+    // Create damage interval
+    boss.userData.activeFireRing.damageInterval = setInterval(() => {
+        // Check if player is inside the fire ring
+        const distanceToPlayer = boss.position.distanceTo(player.position);
+        
+        if (distanceToPlayer <= boss.userData.fireRingRadius) {
+            takeDamage(boss.userData.fireRingDamage / 2); // Damage per tick
+            createFireDamageEffect(player.position);
+        }
+    }, 500); // Check every half second
+    
+    // Animate fire particles
+    function animateFireParticles() {
+        if (!boss.userData.activeFireRing) return;
+        
+        const now = performance.now();
+        const elapsedTime = now - boss.userData.activeFireRing.createTime;
+        
+        // Check if duration expired
+        if (elapsedTime >= boss.userData.fireRingDuration) {
+            // Clean up ring and particles
+            scene.remove(ring);
+            
+            for (const particle of particles) {
+                if (particle.parent) scene.remove(particle);
+            }
+            
+            // Stop damage interval
+            clearInterval(boss.userData.activeFireRing.damageInterval);
+            
+            // Reset boss emissive
+            boss.material.emissive.setHex(0x000000);
+            
+            // Clear reference
+            boss.userData.activeFireRing = null;
+            
+            return;
+        }
+        
+        // Update particles
+        for (const particle of particles) {
+            // Update rotation around center
+            particle.userData.angle += particle.userData.rotateSpeed;
+            particle.position.x = particle.userData.centerX + Math.cos(particle.userData.angle) * particle.userData.radius;
+            particle.position.z = particle.userData.centerZ + Math.sin(particle.userData.angle) * particle.userData.radius;
+            
+            // Rise upward
+            particle.position.y += particle.userData.riseSpeed;
+            
+            // Reset height when too high
+            if (particle.position.y > boss.position.y + 3) {
+                particle.position.y = boss.position.y + 0.1;
+            }
+            
+            // Flicker opacity
+            particle.material.opacity = 0.5 + 0.4 * Math.sin(now * 0.01 + particle.userData.angle);
+        }
+        
+        // Continue animation
+        requestAnimationFrame(animateFireParticles);
+    }
+    
+    // Start animation
+    animateFireParticles();
+}
+
+// Boss ability: Charge Attack
+function bossChargeAttack(boss, directionToPlayer) {
+    // Show warning before charging
+    showNotification("The Guardian prepares to charge!", 1500);
+    
+    // Flash boss before charging
+    const flashCount = 3;
+    const flashInterval = 300;
+    
+    function flashBoss(count) {
+        if (count <= 0 || !boss.parent) return;
+        
+        // Toggle emissive
+        if (count % 2 === 0) {
+            boss.material.emissive.setHex(0xff0000);
+        } else {
+            boss.material.emissive.setHex(0x000000);
+        }
+        
+        // Continue flashing
+        setTimeout(() => flashBoss(count - 1), flashInterval);
+    }
+    
+    flashBoss(flashCount * 2);
+    
+    // Delay the charge to give player time to react
+    setTimeout(() => {
+        if (!boss.parent) return; // Boss might have been defeated already
+        
+        // Set charging state
+        boss.userData.isCharging = true;
+        boss.userData.chargeDirection = directionToPlayer.clone();
+        boss.userData.chargeStartTime = performance.now();
+        
+        // Set emissive to indicate charging
+        boss.material.emissive.setHex(0xff0000);
+        
+        // Create charge effect - trail behind boss
+        createChargeEffect(boss);
+    }, flashInterval * flashCount * 2);
+}
+
+// Function to create visual charge effect
+function createChargeEffect(boss) {
+    // Create trail particles
+    const createParticle = () => {
+        if (!boss.parent || !boss.userData.isCharging) return;
+        
+        const geometry = new THREE.BoxGeometry(0.3, 0.3, 0.3);
+        const material = new THREE.MeshBasicMaterial({
+            color: 0xff3300,
+            transparent: true,
+            opacity: 0.7
+        });
+        
+        const particle = new THREE.Mesh(geometry, material);
+        
+        // Position at boss location with slight offset
+        particle.position.copy(boss.position);
+        particle.position.x += (Math.random() - 0.5) * 1;
+        particle.position.z += (Math.random() - 0.5) * 1;
+        
+        scene.add(particle);
+        
+        // Fade out and remove
+        let opacity = 0.7;
+        
+        function fadeOut() {
+            if (opacity <= 0) {
+                scene.remove(particle);
+                return;
+            }
+            
+            opacity -= 0.05;
+            particle.material.opacity = opacity;
+            
+            requestAnimationFrame(fadeOut);
+        }
+        
+        fadeOut();
+    };
+    
+    // Create particles at intervals during charge
+    const particleInterval = setInterval(() => {
+        if (!boss.parent || !boss.userData.isCharging) {
+            clearInterval(particleInterval);
+            return;
+        }
+        
+        createParticle();
+    }, 50); // Create particle every 50ms
+    
+    // Clear interval after charge completes
+    setTimeout(() => {
+        clearInterval(particleInterval);
+    }, boss.userData.chargeDuration);
+    
+    // Check for collision with player during charge
+    const collisionInterval = setInterval(() => {
+        if (!boss.parent || !boss.userData.isCharging) {
+            clearInterval(collisionInterval);
+            return;
+        }
+        
+        const distanceToPlayer = boss.position.distanceTo(player.position);
+        const collisionRadius = boss.geometry.parameters.width / 2 + 0.5;
+        
+        if (distanceToPlayer <= collisionRadius) {
+            // Collision with player during charge
+            takeDamage(boss.userData.chargeDamage);
+            addScreenShake(0.4, 300);
+            
+            // Create impact effect
+            createExplosion(player.position, 1, 0); // Visual only, damage already applied
+        }
+    }, 100);
+    
+    // Clear interval after charge completes
+    setTimeout(() => {
+        clearInterval(collisionInterval);
+    }, boss.userData.chargeDuration);
+}
+
+// Boss ability: Fire Energy Bolts
+function bossFireEnergyBolts(boss) {
+    // Calculate direction to player
+    const directionToPlayer = new THREE.Vector3()
+        .subVectors(player.position, boss.position)
+        .normalize();
+    
+    // Fire multiple bolts with spread
+    const boltCount = boss.userData.boltCount;
+    const spread = boss.userData.boltSpread;
+    
+    // Create main bolt (directly at player)
+    createEnergyBolt(boss, directionToPlayer, 0xff3300);
+    
+    // Create side bolts with spread
+    for (let i = 1; i <= Math.floor(boltCount / 2); i++) {
+        // Calculate angles for spread
+        const leftAngle = i * spread;
+        const rightAngle = -i * spread;
+        
+        // Create rotated directions
+        const leftDirection = directionToPlayer.clone();
+        const leftRotation = new THREE.Matrix4().makeRotationY(leftAngle);
+        leftDirection.applyMatrix4(leftRotation);
+        
+        const rightDirection = directionToPlayer.clone();
+        const rightRotation = new THREE.Matrix4().makeRotationY(rightAngle);
+        rightDirection.applyMatrix4(rightRotation);
+        
+        // Create bolts
+        createEnergyBolt(boss, leftDirection, 0xff5500);
+        createEnergyBolt(boss, rightDirection, 0xff5500);
+    }
+    
+    // Add attack glow effect
+    const glow = new THREE.PointLight(0xff3300, 2, 5);
+    glow.position.copy(boss.position);
+    glow.position.y += boss.geometry.parameters.height / 2;
+    scene.add(glow);
+    
+    // Remove glow after short duration
+    setTimeout(() => {
+        scene.remove(glow);
+    }, 500);
+}
+
+// Function to create a single energy bolt projectile
+function createEnergyBolt(boss, direction, color) {
+    // Create energy bolt mesh
+    const boltGeometry = new THREE.SphereGeometry(0.4, 8, 8);
+    const boltMaterial = new THREE.MeshBasicMaterial({
+        color: color,
+        transparent: true,
+        opacity: 0.8
+    });
+    
+    const bolt = new THREE.Mesh(boltGeometry, boltMaterial);
+    
+    // Position at boss
+    bolt.position.copy(boss.position);
+    bolt.position.y = boss.position.y + boss.geometry.parameters.height * 0.6;
+    
+    // Add metadata for movement and damage
+    bolt.userData = {
+        direction: direction.clone(),
+        speed: boss.userData.boltSpeed,
+        damage: boss.userData.boltDamage,
+        lifetime: 8000,
+        spawnTime: performance.now(),
+        isEnergyBolt: true
+    };
+    
+    // Add glow effect
+    const glowGeometry = new THREE.SphereGeometry(0.6, 8, 8);
+    const glowMaterial = new THREE.MeshBasicMaterial({
+        color: color,
+        transparent: true,
+        opacity: 0.3,
+        side: THREE.BackSide
+    });
+    
+    const glow = new THREE.Mesh(glowGeometry, glowMaterial);
+    bolt.add(glow);
+    
+    // Add bolt to scene and projectiles array
+    scene.add(bolt);
+    projectiles.push(bolt);
+    
+    // Animate bolt glow
+    animateBoltGlow(bolt);
+    
+    return bolt;
+}
+
+// Function to animate energy bolt glow
+function animateBoltGlow(bolt) {
+    const startTime = performance.now();
+    
+    function animate() {
+        if (!bolt.parent) return;
+        
+        const now = performance.now();
+        const elapsed = now - startTime;
+        
+        // Pulsing effect
+        const scale = 1 + 0.2 * Math.sin(elapsed * 0.01);
+        bolt.children[0].scale.set(scale, scale, scale);
+        
+        requestAnimationFrame(animate);
+    }
+    
+    animate();
+}
+
+// Function to create fire damage effect on player
+function createFireDamageEffect(position) {
+    // Create fire particles
+    for (let i = 0; i < 10; i++) {
+        const size = 0.05 + Math.random() * 0.1;
+        const geometry = new THREE.SphereGeometry(size, 8, 8);
+        const material = new THREE.MeshBasicMaterial({
+            color: new THREE.Color().setHSL(
+                0.05 + Math.random() * 0.05, // Fire color
+                0.7,
+                0.5 + Math.random() * 0.3
+            ),
+            transparent: true,
+            opacity: 0.7
+        });
+        
+        const particle = new THREE.Mesh(geometry, material);
+        
+        // Position around player
+        particle.position.set(
+            position.x + (Math.random() - 0.5) * 0.5,
+            position.y + Math.random() * 1.5,
+            position.z + (Math.random() - 0.5) * 0.5
+        );
+        
+        // Add velocity
+        particle.userData = {
+            velocity: new THREE.Vector3(
+                (Math.random() - 0.5) * 0.02,
+                0.05 + Math.random() * 0.05,
+                (Math.random() - 0.5) * 0.02
+            ),
+            lifetime: 500,
+            spawnTime: performance.now()
+        };
+        
+        scene.add(particle);
+        
+        // Animate and remove
+        function animateParticle() {
+            const now = performance.now();
+            const elapsed = now - particle.userData.spawnTime;
+            
+            if (elapsed > particle.userData.lifetime) {
+                scene.remove(particle);
+                return;
+            }
+            
+            // Move particle
+            particle.position.add(particle.userData.velocity);
+            
+            // Fade out
+            const progress = elapsed / particle.userData.lifetime;
+            particle.material.opacity = 0.7 * (1 - progress);
+            
+            requestAnimationFrame(animateParticle);
+        }
+        
+        requestAnimationFrame(animateParticle);
+    }
+}
+
 // Function to spawn a single enemy
 function spawnEnemy(enemyType) {
     const config = enemyConfigs[enemyType];
@@ -3646,6 +4158,9 @@ function spawnEnemy(enemyType) {
     }
     else if (enemyType === ENEMY_TYPES.MEGA_BOSS) {
         return spawnMegaBoss(config);
+    }
+    else if (enemyType === ENEMY_TYPES.BOSS) {
+        return spawnFirstBoss(config);
     }
     
     // Create enemy mesh for standard enemy types
@@ -3966,59 +4481,166 @@ function handleTeleporterEnemy(enemy, directionToPlayer, distanceToPlayer, now) 
 }
 
 function handleHealerEnemy(enemy, now) {
-    // Find closest damaged ally
-    let closestDamagedAlly = null;
+    // Increase heal range for better utility
+    const healSearchRange = enemy.userData.healRange * 1.5;
+    
+    // Find allies that need healing, prioritizing by health percentage
+    let targetAlly = null;
+    let lowestHealthPercentage = 1.0; // Start with 100% health
     let closestDistance = Infinity;
     
     for (const ally of activeEnemies) {
-        // Skip self or fully healed allies
-        if (ally === enemy || ally.userData.health >= ally.userData.maxHealth) continue;
+        // Skip self
+        if (ally === enemy) continue;
+        
+        // Skip fully healed allies
+        if (ally.userData.health >= ally.userData.maxHealth) continue;
         
         const distance = enemy.position.distanceTo(ally.position);
         
-        if (distance < enemy.userData.healRange && distance < closestDistance) {
-            closestDamagedAlly = ally;
-            closestDistance = distance;
+        // Only consider allies within heal search range
+        if (distance < healSearchRange) {
+            // Calculate health percentage
+            const healthPercentage = ally.userData.health / ally.userData.maxHealth;
+            
+            // If this ally has lower health percentage than our current target
+            // OR it's the same percentage but closer, select this ally
+            if (healthPercentage < lowestHealthPercentage || 
+                (Math.abs(healthPercentage - lowestHealthPercentage) < 0.05 && distance < closestDistance)) {
+                targetAlly = ally;
+                lowestHealthPercentage = healthPercentage;
+                closestDistance = distance;
+            }
         }
     }
     
-    if (closestDamagedAlly) {
-        // Move towards damaged ally
+    if (targetAlly) {
+        // Move towards damaged ally - move faster than normal
         const directionToAlly = new THREE.Vector3()
-            .subVectors(closestDamagedAlly.position, enemy.position)
+            .subVectors(targetAlly.position, enemy.position)
             .normalize();
         
-        moveEnemy(enemy, directionToAlly);
+        // 20% faster movement when heading to heal allies
+        moveEnemy(enemy, directionToAlly, enemy.userData.speed * 1.2);
+        
+        // Visual effect to show healing intent - green line between healer and target
+        createHealTargetingLine(enemy, targetAlly);
         
         // Heal ally if close enough and cooldown expired
-        if (closestDistance < enemy.userData.healRange * 0.5 &&
+        if (closestDistance < enemy.userData.healRange * 0.6 &&
             now - enemy.userData.lastHealTime >= enemy.userData.healCooldown) {
-            healAlly(enemy, closestDamagedAlly);
+            healAlly(enemy, targetAlly);
             enemy.userData.lastHealTime = now;
         }
     } else {
-        // No damaged allies, stay back from player
-        const directionToPlayer = new THREE.Vector3()
-            .subVectors(player.position, enemy.position)
-            .normalize();
+        // No damaged allies found, follow nearest ally
+        let nearestAlly = null;
+        let nearestDistance = Infinity;
         
-        const distanceToPlayer = enemy.position.distanceTo(player.position);
+        for (const ally of activeEnemies) {
+            if (ally === enemy) continue;
+            
+            const distance = enemy.position.distanceTo(ally.position);
+            if (distance < nearestDistance && distance > 3) {
+                nearestAlly = ally;
+                nearestDistance = distance;
+            }
+        }
         
-        if (distanceToPlayer < enemy.userData.healRange * 0.7) {
-            // Too close to player, move away
-            moveEnemy(enemy, directionToPlayer.clone().negate());
+        // If found a nearby ally, follow them at a small distance
+        if (nearestAlly) {
+            const directionToAlly = new THREE.Vector3()
+                .subVectors(nearestAlly.position, enemy.position)
+                .normalize();
+            
+            // If too close, maintain distance
+            if (nearestDistance < 4) {
+                moveEnemy(enemy, directionToAlly.negate(), enemy.userData.speed * 0.5);
+            } 
+            // If too far, catch up
+            else if (nearestDistance > 8) {
+                moveEnemy(enemy, directionToAlly, enemy.userData.speed * 1.1);
+            }
+            // Otherwise move with them but slightly slower
+            else {
+                moveEnemy(enemy, directionToAlly, enemy.userData.speed * 0.8);
+            }
         } else {
-            // Move randomly
-            const randomAngle = Math.random() * Math.PI * 2;
-            const randomDirection = new THREE.Vector3(
-                Math.cos(randomAngle),
-                0,
-                Math.sin(randomAngle)
-            );
-            moveEnemy(enemy, randomDirection);
+            // No allies found or too close to player, avoid player
+            const distanceToPlayer = enemy.position.distanceTo(player.position);
+            
+            if (distanceToPlayer < enemy.userData.healRange * 0.7) {
+                // Too close to player, move away
+                const directionToPlayer = new THREE.Vector3()
+                    .subVectors(player.position, enemy.position)
+                    .normalize();
+                moveEnemy(enemy, directionToPlayer.negate());
+            } else {
+                // Move randomly
+                const randomAngle = Math.random() * Math.PI * 2;
+                const randomDirection = new THREE.Vector3(
+                    Math.cos(randomAngle),
+                    0,
+                    Math.sin(randomAngle)
+                );
+                moveEnemy(enemy, randomDirection);
+            }
         }
     }
 }
+
+// Add this new function to create a visual targeting line between healer and target
+function createHealTargetingLine(healer, target) {
+    // Remove any existing targeting line
+    if (healer.userData.targetingLine && healer.userData.targetingLine.parent) {
+        scene.remove(healer.userData.targetingLine);
+    }
+    
+    // Create line geometry between healer and target
+    const points = [
+        new THREE.Vector3(0, 1, 0), // Start at healer, offset from ground
+        new THREE.Vector3(0, 1, 0)  // Will be updated to target position
+    ];
+    
+    const lineGeometry = new THREE.BufferGeometry().setFromPoints(points);
+    const lineMaterial = new THREE.LineBasicMaterial({
+        color: 0x00ff44, // Green healing color
+        transparent: true,
+        opacity: 0.4
+    });
+    
+    const line = new THREE.Line(lineGeometry, lineMaterial);
+    
+    // Position the line at the healer and orient it toward the target
+    line.position.copy(healer.position);
+    
+    // Calculate the direction and distance to target
+    const direction = new THREE.Vector3().subVectors(target.position, healer.position);
+    const distance = direction.length();
+    
+    // Set the second point to the target position (in local coordinates)
+    lineGeometry.attributes.position.array[3] = direction.x;
+    lineGeometry.attributes.position.array[4] = direction.y;
+    lineGeometry.attributes.position.array[5] = direction.z;
+    lineGeometry.attributes.position.needsUpdate = true;
+    
+    // Add the line to the scene
+    scene.add(line);
+    
+    // Store the line for future reference/removal
+    healer.userData.targetingLine = line;
+    
+    // Automatically remove the line after a short duration
+    setTimeout(() => {
+        if (line.parent) {
+            scene.remove(line);
+        }
+        if (healer.userData.targetingLine === line) {
+            healer.userData.targetingLine = null;
+        }
+    }, 200); // 200ms is enough to create a trail effect as the healer moves
+}
+
 
 function handleEliteEnemy(enemy, directionToPlayer, distanceToPlayer, now) {
     // Basic movement behavior - get in range
@@ -4061,21 +4683,54 @@ function handleEliteEnemy(enemy, directionToPlayer, distanceToPlayer, now) {
 }
 
 function handleBossEnemy(enemy, directionToPlayer, distanceToPlayer, now) {
-    // Basic movement behavior - get in range
-    if (distanceToPlayer > enemy.userData.attackRange) {
-        moveEnemy(enemy, directionToPlayer);
-    } else {
-        // Regular attack if cooldown expired
-        if (now - enemy.userData.lastAttackTime >= enemy.userData.attackCooldown) {
-            attackPlayer(enemy);
-            enemy.userData.lastAttackTime = now;
+    // Maintain a medium-range distance from the player
+    const optimalRange = enemy.userData.attackRange * 1.2;
+    
+    // Move toward optimal range if not charging
+    if (!enemy.userData.isCharging) {
+        if (distanceToPlayer > optimalRange + 2) {
+            // Too far, move closer
+            moveEnemy(enemy, directionToPlayer);
+        } else if (distanceToPlayer < optimalRange - 2) {
+            // Too close, back up
+            moveEnemy(enemy, directionToPlayer.clone().negate(), enemy.userData.speed * 0.8);
         }
     }
     
-    // Special attack if cooldown expired
-    if (now - enemy.userData.lastSpecialAttackTime >= enemy.userData.specialAttackCooldown) {
-        bossSpecialAttack(enemy);
-        enemy.userData.lastSpecialAttackTime = now;
+    // Regular attack if within range and cooldown expired
+    if (distanceToPlayer <= enemy.userData.attackRange && 
+        now - enemy.userData.lastAttackTime >= enemy.userData.attackCooldown &&
+        !enemy.userData.isCharging) {
+        // Fire energy bolts
+        bossFireEnergyBolts(enemy);
+        enemy.userData.lastAttackTime = now;
+    }
+    
+    // Activate fire ring if player gets too close
+    if (distanceToPlayer < enemy.userData.attackRange * 0.7 && 
+        now - enemy.userData.lastFireRingTime >= enemy.userData.fireRingCooldown) {
+        bossActivateFireRing(enemy);
+        enemy.userData.lastFireRingTime = now;
+    }
+    
+    // Charge attack if cooldown expired
+    if (now - enemy.userData.lastChargeTime >= enemy.userData.chargeCooldown &&
+        !enemy.userData.isCharging) {
+        bossChargeAttack(enemy, directionToPlayer);
+        enemy.userData.lastChargeTime = now;
+    }
+    
+    // Update charge movement if currently charging
+    if (enemy.userData.isCharging && enemy.userData.chargeDirection) {
+        // Move in charge direction at higher speed
+        moveEnemy(enemy, enemy.userData.chargeDirection, enemy.userData.speed * 2.5);
+        
+        // Check if charge duration has expired
+        if (now - enemy.userData.chargeStartTime >= enemy.userData.chargeDuration) {
+            // End charge and add brief recovery period
+            enemy.userData.isCharging = false;
+            enemy.userData.material.emissive.setHex(0x000000);
+        }
     }
 }
 
@@ -5962,9 +6617,9 @@ function spawnMegaBoss(config) {
 }
 
 // Function to move enemy
-function moveEnemy(enemy, direction) {
-    const speed = enemy.userData.speed;
-    const movement = direction.clone().multiplyScalar(speed);
+function moveEnemy(enemy, direction, speed = null) {
+    const moveSpeed = speed || enemy.userData.speed;
+    const movement = direction.clone().multiplyScalar(moveSpeed);
     
     // Store original position for collision detection
     const originalX = enemy.position.x;
@@ -6309,14 +6964,47 @@ function damageEnemy(enemy, damage) {
     if (enemy.userData.health <= 0) {
         defeatEnemy(enemy);
     } else {
-        // Flash effect for hit feedback
-        enemy.material.emissive.setHex(0xff0000);
-        setTimeout(() => {
-            if (enemy.material) {
-                enemy.material.emissive.setHex(0x000000);
-            }
-        }, 100);
+        // Flash effect for hit feedback with safety checks
+        if (enemy.material && enemy.material.emissive && typeof enemy.material.emissive.setHex === 'function') {
+            enemy.material.emissive.setHex(0xff0000);
+            setTimeout(() => {
+                if (enemy.material && enemy.material.emissive) {
+                    enemy.material.emissive.setHex(0x000000);
+                }
+            }, 100);
+        }
     }
+}
+
+function createShield(position, radius, color = 0xff3300, duration = 3000) {
+    // Create shield geometry
+    const shieldGeometry = new THREE.SphereGeometry(radius, 32, 32);
+    const shieldMaterial = new THREE.MeshPhongMaterial({
+        color: color,
+        transparent: true,
+        opacity: 0.4,
+        side: THREE.DoubleSide
+    });
+    
+    const shield = new THREE.Mesh(shieldGeometry, shieldMaterial);
+    shield.position.copy(position);
+    scene.add(shield);
+    
+    // Add visual effect for shield creation
+    if (typeof createShieldActivationEffect === 'function') {
+        createShieldActivationEffect(position);
+    }
+    
+    // Remove shield after duration
+    if (duration > 0) {
+        setTimeout(() => {
+            if (shield.parent) {
+                scene.remove(shield);
+            }
+        }, duration);
+    }
+    
+    return shield;
 }
 
 // Function to handle enemy defeat
