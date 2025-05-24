@@ -396,174 +396,180 @@ const enemyConfigs = {
 // Round configurations
 const roundConfigs = [
     { // Round 1 - Tutorial
+        normal: 8
+    },
+    { // Round 2 - Introducing Tanks
         normal: 10,
-        tank: 0,
-        ranged: 0,
-        boss: 0
+        tank: 2
     },
-    { // Round 2
-        normal: 15,
-        tank: 0,
-        ranged: 0,
-        boss: 0
-    },
-    { // Round 3
-        normal: 15,
-        tank: 2,
-        ranged: 0,
-        boss: 0
-    },
-    { // Round 4
+    { // Round 3 - Introducing Ranged
         normal: 12,
+        tank: 2,
+        ranged: 3
+    },
+    { // Round 4 - Introducing Speeders
+        normal: 10,
         tank: 3,
         ranged: 3,
-        boss: 0
+        speeder: 3
     },
-    { // Round 5
-        normal: 15,
+    { // Round 5 - First Boss
+        normal: 8,
+        tank: 2,
+        ranged: 2,
+        speeder: 2,
+        boss: 1
+    },
+    { // Round 6 - Introducing Exploders
+        normal: 12,
         tank: 4,
-        ranged: 5,
-        boss: 1,
-        speeder: 2
+        ranged: 4,
+        speeder: 4,
+        exploder: 3
     },
-    { // Round 6
+    { // Round 7 - Introducing Shielders
+        normal: 12,
+        tank: 4,
+        ranged: 4,
+        speeder: 5,
+        exploder: 4,
+        shielder: 3
+    },
+    { // Round 8 - Introducing Teleporters
         normal: 10,
         tank: 5,
         ranged: 5,
-        boss: 0,
-        speeder: 5
-    },
-    { // Round 7
-        normal: 15,
-        tank: 5,
-        ranged: 5,
-        exploder: 3,
-        speeder: 5
-    },
-    { // Round 8
-        normal: 15,
-        tank: 6,
-        ranged: 6, 
-        exploder: 4,
-        speeder: 6,
-        shielder: 2
-    },
-    { // Round 9
-        normal: 20,
-        tank: 8,
-        ranged: 8,
         exploder: 5,
-        speeder: 8,
-        shielder: 4,
+        speeder: 6,
+        shielder: 3,
         teleporter: 3
     },
+    { // Round 9 - Mixed Challenge
+        normal: 15,
+        tank: 6,
+        ranged: 6,
+        exploder: 5,
+        speeder: 6,
+        shielder: 4,
+        teleporter: 4
+    },
     { // Round 10 - WARDEN BOSS ROUND
-        normal: 10,
+        normal: 8,
         tank: 3,
         ranged: 3,
+        speeder: 3,
+        shielder: 2,
         warden_boss: 1
     },
-    { // Round 11
-        normal: 20,
-        tank: 10,
-        ranged: 10,
-        exploder: 8,
-        speeder: 10,
-        shielder: 6,
-        teleporter: 5
-    },
-    { // Round 12
-        normal: 25,
-        tank: 12,
-        ranged: 12,
-        exploder: 10,
-        speeder: 12,
-        shielder: 8, 
-        teleporter: 6,
+    { // Round 11 - Introducing Healers
+        normal: 15,
+        tank: 7,
+        ranged: 7,
+        exploder: 6,
+        speeder: 7,
+        shielder: 5,
+        teleporter: 4,
         healer: 3
     },
-    { // Round 13
-        normal: 20,
-        tank: 10,
-        ranged: 10,
-        exploder: 12,
-        speeder: 15,
-        shielder: 10,
-        teleporter: 8, 
-        healer: 5,
+    { // Round 12 - Introducing Elites
+        normal: 15,
+        tank: 8,
+        ranged: 8,
+        exploder: 7,
+        speeder: 8,
+        shielder: 5,
+        teleporter: 5,
+        healer: 3,
         elite: 2
     },
-    { // Round 14
-        normal: 25,
+    { // Round 13 - Healer Focus
+        normal: 12,
+        tank: 8,
+        ranged: 8,
+        exploder: 8,
+        speeder: 8,
+        shielder: 6,
+        teleporter: 5, 
+        healer: 6,
+        elite: 3
+    },
+    { // Round 14 - Elite Focus
+        normal: 15,
+        tank: 10,
+        ranged: 10,
+        exploder: 10,
+        speeder: 10,
+        shielder: 8,
+        teleporter: 6,
+        healer: 5,
+        elite: 6
+    },
+    { // Round 15 - PHANTOM BOSS ROUND
+        tank: 4,
+        ranged: 4,
+        exploder: 4,
+        speeder: 4,
+        shielder: 3,
+        healer: 3,
+        elite: 2,
+        phantom_boss: 1
+    },
+    { // Round 16 - Increased Challenge
+        normal: 18,
+        tank: 12,
+        ranged: 12,
+        exploder: 12,
+        speeder: 12,
+        shielder: 10,
+        teleporter: 8,
+        healer: 7,
+        elite: 5
+    },
+    { // Round 17 - Elite Healer Combo
+        normal: 15,
+        tank: 14,
+        ranged: 14,
+        exploder: 14,
+        speeder: 14,
+        shielder: 12,
+        teleporter: 10,
+        healer: 8,
+        elite: 7
+    },
+    { // Round 18 - Near-Final Challenge
+        normal: 20,
         tank: 15,
         ranged: 15,
         exploder: 15,
         speeder: 15,
-        shielder: 12,
-        teleporter: 10,
-        healer: 8,
-        elite: 5
+        shielder: 15,
+        teleporter: 12,
+        healer: 10,
+        elite: 8
     },
-    { // Round 15 - PHANTOM BOSS ROUND
-        tank: 5,
-        ranged: 5,
-        exploder: 5,
-        speeder: 5,
-        phantom_boss: 1
-    },
-    { // Round 16
-        normal: 30,
+    { // Round 19 - Final Wave
+        normal: 25,
         tank: 18,
         ranged: 18,
         exploder: 18,
         speeder: 18,
         shielder: 15,
         teleporter: 12,
-        healer: 10,
-        elite: 8
-    },
-    { // Round 17
-        normal: 35,
-        tank: 20,
-        ranged: 20,
-        exploder: 20,
-        speeder: 20,
-        shielder: 18,
-        teleporter: 15,
         healer: 12,
         elite: 10
     },
-    { // Round 18
-        normal: 40,
-        tank: 22,
-        ranged: 22,
-        exploder: 22,
-        speeder: 22,
-        shielder: 20,
-        teleporter: 18,
-        healer: 15,
-        elite: 12
-    },
-    { // Round 19
-        normal: 45,
-        tank: 25,
-        ranged: 25,
-        exploder: 25,
-        speeder: 25,
-        shielder: 22,
-        teleporter: 20,
-        healer: 18,
-        elite: 15
-    },
     { // Round 20 - MEGA BOSS ROUND
-        normal: 10,
-        tank: 5,
-        ranged: 5,
+        tank: 6,
+        ranged: 6,
         exploder: 5,
         speeder: 5,
+        shielder: 4,
+        teleporter: 3,
+        healer: 4,
+        elite: 3,
         mega_boss: 1
     }
-];
+]
 
 // Add these variables with your other global variables
 let infiniteHealthCheat = false;
@@ -3547,7 +3553,14 @@ function startNextRound() {
     const config = roundConfigs[currentRound - 1];
     
     // Calculate total enemies for this round
-    const totalEnemies = config.normal + config.tank + config.ranged + config.boss;
+    let totalEnemies = 0;
+    for (const enemyType in config) {
+        if (config.hasOwnProperty(enemyType)) {
+            totalEnemies += config[enemyType];
+        }
+    }
+    
+    // Update enemies remaining display with the total count immediately
     document.getElementById('enemiesRemaining').textContent = `Enemies: ${totalEnemies}`;
     
     // Start round
@@ -4640,7 +4653,6 @@ function createHealTargetingLine(healer, target) {
         }
     }, 200); // 200ms is enough to create a trail effect as the healer moves
 }
-
 
 function handleEliteEnemy(enemy, directionToPlayer, distanceToPlayer, now) {
     // Basic movement behavior - get in range
@@ -7047,8 +7059,9 @@ function defeatEnemy(enemy) {
         enemies.splice(masterIndex, 1);
     }
     
-    // Update enemies remaining count
-    document.getElementById('enemiesRemaining').textContent = `Enemies: ${activeEnemies.length}`;
+    // Update enemies remaining count based on how many are left in the active array
+    const remainingEnemies = activeEnemies.length;
+    document.getElementById('enemiesRemaining').textContent = `Enemies: ${remainingEnemies}`;
     
     // Create defeat animation
     createEnemyDefeatAnimation(enemy);
@@ -7130,8 +7143,9 @@ function createEnemyDefeatAnimation(enemy) {
 function endRound() {
     isRoundActive = false;
     
-    // Calculate time until next round
-    const betweenRoundWait = betweenRoundTime + (currentRound - 1) * 5;
+    // Calculate time until next round with 60 second cap
+    const baseWait = betweenRoundTime + (currentRound - 1) * 5;
+    const betweenRoundWait = Math.min(60, baseWait); // Cap at 60 seconds maximum
     
     // Show next round message
     if (currentRound < totalRounds) {
