@@ -31,6 +31,8 @@ let shield = 0;
 let showFPS = false;
 let lastTime = performance.now();
 let frameCount = 0;
+let roadBlockades = [];
+let roadLampObjects = [];
 
 
 // Item system variables
@@ -1617,7 +1619,7 @@ function updatePlayer() {
     const CROUCH_SPEED = 0.1;
     const JUMP_FORCE = 0.18;
     const GRAVITY = 0.008;
-    const BOUNDARY_LIMIT = 75;
+    const BOUNDARY_LIMIT = 112.5;
     
     // Handle player state (crouching)
     let currentSpeed = NORMAL_SPEED;
@@ -1757,7 +1759,34 @@ function checkCollisions(x, z) {
         }
     }
     
-    return false; // No collision
+    // Check collisions with lamp posts
+    for (const lamp of roadLampObjects) {
+        const dx = lamp.position.x - x;
+        const dz = lamp.position.z - z;
+        const distance = Math.sqrt(dx * dx + dz * dz);
+        
+        if (distance < (lamp.userData.collisionRadius + playerRadius)) {
+            return true; // Collision with lamp post
+        }
+    }
+    
+    // NEW: Check collisions with road blockades (as solid areas)
+    const roadEndX = 110; // Same as in addRoadBlockades
+    const roadWidth = 15;
+    const blockadeDepth = 12; // How "deep" the blockade area is
+    
+    // East blockade area (positive X)
+    if (Math.abs(x - roadEndX) < blockadeDepth && Math.abs(z) < roadWidth / 2 + 5) {
+        return true; // Collision with east blockade area
+    }
+    
+    // West blockade area (negative X)
+    if (Math.abs(x + roadEndX) < blockadeDepth && Math.abs(z) < roadWidth / 2 + 5) {
+        return true; // Collision with west blockade area
+    }
+    
+    // No collision detected with any object
+    return false;
 }
 
 // Update the shop interface when the game starts
@@ -1784,11 +1813,14 @@ function updateShopInterface() {
 // Update your startGame function
 function startGame() {
     // Create floor for game scene
-    const floorGeometry = new THREE.PlaneGeometry(187.5, 187.5);
+    const floorGeometry = new THREE.PlaneGeometry(281.25, 281.25);
     const floorMaterial = new THREE.MeshBasicMaterial({ color: 0x4a2f2f, side: THREE.DoubleSide });
     const floor = new THREE.Mesh(floorGeometry, floorMaterial);
     floor.rotation.x = -Math.PI / 2;
     scene.add(floor);
+
+    createApocalypticRoad();
+    addRoadBlockades();
 
     // Create player with normal height
     const playerGeometry = new THREE.BoxGeometry(1, NORMAL_HEIGHT, 1);
@@ -1799,44 +1831,133 @@ function startGame() {
 
     // Clear mountains array
     mountains = [];
-
-    // Create mountains for game scene
+    
+    // Create mountains for game scene with precise edge alignment (same as menu scene)
     const spacing = 12;
-    const boundary = 87.5;
-    const offsetDistance = 8;
-
+    const boundary = 131.25;
+    const rows = 3;
+    
     const mountainPositions = [];
+    
+    // Road parameters - FIXED for precise edge alignment
+    const roadWidth = 15;
+    const roadHalfWidth = roadWidth / 2; // Exact road half-width without extra clearance
+    
+    // IMPORTANT: Define road direction - X-axis in this case (east-west)
+    const roadDirection = 'x'; // Valid values: 'x' or 'z'
 
-    for (let x = -boundary; x <= boundary; x += spacing) {
-        mountainPositions.push([x, -boundary]);
-        mountainPositions.push([x, boundary]);
-        mountainPositions.push([x, -boundary + offsetDistance]);
-        mountainPositions.push([x, boundary - offsetDistance]);
-    }
-
-    for (let z = -boundary; z <= boundary; z += spacing) {
-        mountainPositions.push([-boundary, z]);
-        mountainPositions.push([boundary, z]);
-        mountainPositions.push([-boundary + offsetDistance, z]);
-        mountainPositions.push([boundary - offsetDistance, z]);
-    }
-
-    mountainPositions.forEach(([x, z]) => {
-        const baseHeight = 20 + (Math.random() - 0.5) * 15;
-        const baseWidth = 8 + (Math.random() - 0.5) * 6;
+    // Generate mountain positions for multiple rows
+    for (let row = 0; row < rows; row++) {
+        const offsetDistance = 10 * row;
         
-        const mountainGeometry = new THREE.ConeGeometry(baseWidth, baseHeight, 4);
-        const mountainMaterial = new THREE.MeshPhongMaterial({ 
-            color: 0x4d3319,
-            flatShading: true 
-        });
+        // Generate mountains along the x-axis (top and bottom borders)
+        for (let x = -boundary - 10; x <= boundary + 10; x += spacing) {
+            // Skip mountains only if road runs along Z-axis (north-south) AND at the boundary opening
+            const distanceFromCenterX = Math.abs(x);
+            const isInRoadPathX = roadDirection === 'z' && distanceFromCenterX <= roadHalfWidth;
+            
+            // Only add mountain if not in the road path
+            if (!isInRoadPathX) {
+                // For mountains near the road edge, position them precisely at the edge
+                let xOffset = 0;
+                
+                if (roadDirection === 'z' && Math.abs(distanceFromCenterX - roadHalfWidth) < 6) {
+                    // This mountain is near the road edge, align it precisely
+                    xOffset = distanceFromCenterX < roadHalfWidth ? 
+                              roadHalfWidth - distanceFromCenterX : // Push to the edge if inside
+                              (Math.random() - 0.5) * Math.min(3, Math.abs(distanceFromCenterX - roadHalfWidth)); // Small random if outside
+                } else {
+                    // Normal random offset for mountains away from road
+                    xOffset = (Math.random() - 0.5) * Math.min(6, Math.max(0, distanceFromCenterX - roadHalfWidth));
+                }
+                
+                mountainPositions.push({
+                    x: x + xOffset,
+                    z: -boundary + offsetDistance,
+                    scale: 1 - row * 0.15
+                });
+                
+                mountainPositions.push({
+                    x: x + xOffset,
+                    z: boundary - offsetDistance,
+                    scale: 1 - row * 0.15
+                });
+            }
+        }
         
-        const mountain = new THREE.Mesh(mountainGeometry, mountainMaterial);
-        mountain.position.set(x, baseHeight / 2, z);
-        mountain.rotation.y = Math.random() * Math.PI / 2;
-        scene.add(mountain);
-        mountains.push(mountain);
+        // Generate mountains along the z-axis (left and right borders)
+        for (let z = -boundary - 10; z <= boundary + 10; z += spacing) {
+            // Skip mountains only if road runs along X-axis (east-west) AND at the boundary opening
+            const distanceFromCenterZ = Math.abs(z);
+            const isInRoadPathZ = roadDirection === 'x' && distanceFromCenterZ <= roadHalfWidth;
+            
+            // Only add mountain if not in the road path
+            if (!isInRoadPathZ) {
+                // For mountains near the road edge, position them precisely at the edge
+                let zOffset = 0;
+                
+                if (roadDirection === 'x' && Math.abs(distanceFromCenterZ - roadHalfWidth) < 6) {
+                    // This mountain is near the road edge, align it precisely
+                    zOffset = distanceFromCenterZ < roadHalfWidth ? 
+                             roadHalfWidth - distanceFromCenterZ : // Push to the edge if inside
+                             (Math.random() - 0.5) * Math.min(3, Math.abs(distanceFromCenterZ - roadHalfWidth)); // Small random if outside
+                } else {
+                    // Normal random offset for mountains away from road
+                    zOffset = (Math.random() - 0.5) * Math.min(6, Math.max(0, distanceFromCenterZ - roadHalfWidth));
+                }
+                
+                mountainPositions.push({
+                    x: -boundary + offsetDistance,
+                    z: z + zOffset,
+                    scale: 1 - row * 0.15
+                });
+                
+                mountainPositions.push({
+                    x: boundary - offsetDistance,
+                    z: z + zOffset,
+                    scale: 1 - row * 0.15
+                });
+            }
+        }
+    }
+    
+    // IMPORTANT: Create mountains only ONCE with the final positions
+    mountainPositions.forEach(pos => {
+        const baseHeight = 20 + (Math.random() - 0.5) * 24;
+        const baseWidth = 8 + (Math.random() - 0.5) * 9;
+        
+        // Apply position-specific scale
+        const scaledHeight = baseHeight * pos.scale;
+        const scaledWidth = baseWidth * pos.scale;
+        
+        // Check if this mountain would overlap the road
+        const distanceFromCenterX = Math.abs(pos.x);
+        const distanceFromCenterZ = Math.abs(pos.z);
+        
+        // More precise calculation - Consider mountain base radius relative to road edge
+        const mountainRadius = scaledWidth / 2;
+        
+        // Make sure mountain doesn't overlap road but can touch its edge exactly
+        const roadOverlapX = roadDirection === 'z' && distanceFromCenterX - mountainRadius < roadHalfWidth;
+        const roadOverlapZ = roadDirection === 'x' && distanceFromCenterZ - mountainRadius < roadHalfWidth;
+        
+        // Only create mountain if it doesn't overlap the road
+        if (!roadOverlapX && !roadOverlapZ) {
+            const mountainGeometry = new THREE.ConeGeometry(scaledWidth, scaledHeight, 4);
+            const mountainMaterial = new THREE.MeshPhongMaterial({ 
+                color: 0x4d3319,
+                flatShading: true 
+            });
+            
+            const mountain = new THREE.Mesh(mountainGeometry, mountainMaterial);
+            mountain.position.set(pos.x, scaledHeight/2, pos.z);
+            mountain.rotation.y = Math.random() * Math.PI / 2;
+            
+            scene.add(mountain);
+            mountains.push(mountain);
+        }
     });
+
 
     pitchObject = new THREE.Object3D();
     yawObject = new THREE.Object3D();
@@ -1911,6 +2032,558 @@ function startGame() {
 
     // Start the rounds
     startRounds();
+}
+
+// Function to add roadblocks at the boundaries where the road meets the map edge
+function addRoadBlockades(targetScene = scene) {
+    // Road ends coordinates - just inside the player boundary limits
+    const roadEndX = 110; // Slightly inside the actual boundary of 112.5
+    const roadWidth = 15;
+    
+    // Create roadblocks for both ends of the road (east and west)
+    const eastBlockade = createRoadBlockade(roadEndX, 0, targetScene);  // East end (positive X)
+    const westBlockade = createRoadBlockade(-roadEndX, Math.PI, targetScene); // West end (negative X) - rotated 180°
+    
+    // Store these blockade groups for later cleanup
+    roadBlockades.push(eastBlockade, westBlockade);
+}
+
+// Function to create a road blockade consisting of multiple elements
+function createRoadBlockade(xPos, rotation, targetScene) {
+    // Create blockade group to hold all elements
+    const blockadeGroup = new THREE.Group();
+    blockadeGroup.position.set(xPos, 0, 0);
+    blockadeGroup.rotation.y = rotation;
+    targetScene.add(blockadeGroup);
+    
+    // Create a crashed bus/truck as the main blockade
+    createAbandonedVehicle(0, 0, 0, 0, blockadeGroup); // Position relative to group
+    
+    // Add concrete barriers in a staggered formation
+    createBarricade(0, 0, 0, 0, blockadeGroup); // Position relative to group
+    
+    // Add some debris and smaller elements
+    createRoadDebrisCluster(0, 0, 0, 0, blockadeGroup); // Position relative to group
+    
+    // Add warning signs
+    createRoadSigns(0, 0, 0, 0, blockadeGroup); // Position relative to group
+    
+    return blockadeGroup; // Return the group for tracking
+}
+
+// Add this to your resetGame function or create a new function to clean up barriers
+function clearRoadBlockades() {
+    // Remove all road blockades from their parent scenes
+    for (const blockade of roadBlockades) {
+        if (blockade && blockade.parent) {
+            blockade.parent.remove(blockade);
+        }
+    }
+    
+    // Clear the tracking array
+    roadBlockades = [];
+}
+
+// Function to create an abandoned vehicle (truck or bus)
+function createAbandonedVehicle(x, y, z, rotation, targetScene) {
+    // Create vehicle group
+    const vehicleGroup = new THREE.Group();
+    
+    // Randomly choose between a truck or a bus
+    const isTruck = Math.random() > 0.5;
+    
+    // Vehicle body dimensions
+    const length = isTruck ? 8 : 12;
+    const width = 3;
+    const height = isTruck ? 3.5 : 3;
+    
+    // Main body
+    const bodyGeometry = new THREE.BoxGeometry(length, height, width);
+    const bodyMaterial = new THREE.MeshStandardMaterial({
+        color: isTruck ? 0x683c11 : 0x3b6e9a, // Brown for truck, blue for bus
+        roughness: 0.9,
+        metalness: 0.3
+    });
+    const body = new THREE.Mesh(bodyGeometry, bodyMaterial);
+    body.position.y = height/2;
+    vehicleGroup.add(body);
+    
+    // Cabin (for truck)
+    if (isTruck) {
+        const cabinGeometry = new THREE.BoxGeometry(3, 2.5, width);
+        const cabinMaterial = new THREE.MeshStandardMaterial({
+            color: 0x222222, 
+            roughness: 0.7,
+            metalness: 0.4
+        });
+        const cabin = new THREE.Mesh(cabinGeometry, cabinMaterial);
+        cabin.position.set(length/2 - 1.5, height/2 + 0.5, 0);
+        vehicleGroup.add(cabin);
+        
+        // Windshield
+        const windshieldGeometry = new THREE.PlaneGeometry(2, 1.5);
+        const windshieldMaterial = new THREE.MeshStandardMaterial({
+            color: 0x888888,
+            transparent: true,
+            opacity: 0.3
+        });
+        const windshield = new THREE.Mesh(windshieldGeometry, windshieldMaterial);
+        windshield.position.set(length/2 - 0.5, height/2 + 1, width/2 + 0.01);
+        windshield.rotation.y = Math.PI/2;
+        vehicleGroup.add(windshield);
+    }
+    
+    // Windows for bus
+    if (!isTruck) {
+        // Add row of windows along sides
+        const windowMaterial = new THREE.MeshStandardMaterial({
+            color: 0x444444,
+            transparent: true,
+            opacity: 0.4,
+            metalness: 0.6
+        });
+        
+        for (let i = 0; i < 6; i++) {
+            // Left side windows
+            const leftWindow = new THREE.Mesh(
+                new THREE.PlaneGeometry(1.2, 1),
+                windowMaterial
+            );
+            leftWindow.position.set(-length/2 + 2 + i*1.6, height/2 + 0.2, width/2 + 0.01);
+            leftWindow.rotation.y = Math.PI/2;
+            vehicleGroup.add(leftWindow);
+            
+            // Right side windows
+            const rightWindow = new THREE.Mesh(
+                new THREE.PlaneGeometry(1.2, 1),
+                windowMaterial
+            );
+            rightWindow.position.set(-length/2 + 2 + i*1.6, height/2 + 0.2, -width/2 - 0.01);
+            rightWindow.rotation.y = -Math.PI/2;
+            vehicleGroup.add(rightWindow);
+        }
+    }
+    
+    // Wheels
+    const wheelGeometry = new THREE.CylinderGeometry(0.8, 0.8, 0.6, 16);
+    const wheelMaterial = new THREE.MeshStandardMaterial({
+        color: 0x111111,
+        roughness: 0.9
+    });
+    
+    // Create wheels based on vehicle type
+    const wheelCount = isTruck ? 4 : 6;
+    const wheelSpacing = length / (wheelCount/2 + 1);
+    
+    for (let i = 0; i < wheelCount/2; i++) {
+        // Left wheels
+        const leftWheel = new THREE.Mesh(wheelGeometry, wheelMaterial);
+        leftWheel.rotation.x = Math.PI/2;
+        leftWheel.position.set(-length/2 + wheelSpacing * (i+1), 0.8, width/2);
+        vehicleGroup.add(leftWheel);
+        
+        // Right wheels
+        const rightWheel = new THREE.Mesh(wheelGeometry, wheelMaterial);
+        rightWheel.rotation.x = Math.PI/2;
+        rightWheel.position.set(-length/2 + wheelSpacing * (i+1), 0.8, -width/2);
+        vehicleGroup.add(rightWheel);
+    }
+    
+    // Add damage/weathering effects
+    addVehicleDamage(vehicleGroup, isTruck, length, width, height);
+    
+    // Position the vehicle and tilt it to look crashed
+    vehicleGroup.position.set(x, y, z);
+    vehicleGroup.rotation.y = rotation;
+    
+    // Set a random tilt to make it look crashed
+    const tiltAxis = Math.random() > 0.5 ? 'x' : 'z';
+    const tiltAmount = (Math.random() * 0.2) + 0.1; // 0.1 to 0.3 radians
+    vehicleGroup.rotation[tiltAxis] = Math.random() > 0.5 ? tiltAmount : -tiltAmount;
+    
+    // Block road by placing across it
+    vehicleGroup.rotation.y += Math.PI/4 * (Math.random() > 0.5 ? 1 : -1);
+    
+    targetScene.add(vehicleGroup);
+    return vehicleGroup;
+}
+
+// Function to add damage effects to vehicles
+function addVehicleDamage(vehicleGroup, isTruck, length, width, height) {
+    // Rust patches
+    const rustMaterial = new THREE.MeshStandardMaterial({
+        color: 0x8B4513,
+        roughness: 1.0,
+        metalness: 0.1
+    });
+    
+    // Add several rust patches
+    for (let i = 0; i < 4; i++) {
+        const rustSize = new THREE.Vector3(
+            1 + Math.random() * 2,
+            0.8 + Math.random() * 1,
+            0.1
+        );
+        
+        const rustGeometry = new THREE.BoxGeometry(rustSize.x, rustSize.y, rustSize.z);
+        const rustPatch = new THREE.Mesh(rustGeometry, rustMaterial);
+        
+        // Position randomly on vehicle sides
+        const side = Math.random() > 0.5 ? 1 : -1;
+        rustPatch.position.set(
+            (Math.random() - 0.5) * length,
+            Math.random() * height/2,
+            side * (width/2 + 0.05)
+        );
+        
+        vehicleGroup.add(rustPatch);
+    }
+    
+    // Broken parts for truck body
+    if (isTruck) {
+        // Add dents and damage
+        const dentMaterial = new THREE.MeshStandardMaterial({
+            color: 0x444444,
+            roughness: 0.8,
+            metalness: 0.2
+        });
+        
+        const dentGeometry = new THREE.SphereGeometry(1.2, 8, 8, 0, Math.PI);
+        const dent = new THREE.Mesh(dentGeometry, dentMaterial);
+        dent.position.set(-length/4, height/3, width/2);
+        dent.rotation.y = Math.PI/2;
+        vehicleGroup.add(dent);
+    }
+}
+
+// Function to create concrete barriers and barricades
+function createBarricade(x, y, z, rotation, targetScene) {
+    const barricadeGroup = new THREE.Group();
+    
+    // Create several concrete barriers in a zigzag pattern
+    const barrierCount = 3 + Math.floor(Math.random() * 3); // 3-5 barriers
+    const roadWidth = 15;
+    
+    for (let i = 0; i < barrierCount; i++) {
+        // Create a concrete jersey barrier
+        const barrierGeometry = new THREE.BoxGeometry(2.5, 1.2, 0.6);
+        const barrierMaterial = new THREE.MeshStandardMaterial({
+            color: 0xcccccc, // Concrete gray
+            roughness: 0.9,
+            metalness: 0.1
+        });
+        
+        const barrier = new THREE.Mesh(barrierGeometry, barrierMaterial);
+        
+        // Position barriers in a zigzag pattern across the road
+        const offset = (i % 2 === 0) ? roadWidth/3 : -roadWidth/3;
+        barrier.position.set(i * -2, 0.6, offset);
+        
+        // Rotate barriers slightly to look haphazard
+        barrier.rotation.y = (Math.random() - 0.5) * 0.5;
+        
+        barricadeGroup.add(barrier);
+        
+        // Add warning stripes to barriers
+        addWarningStripes(barrier);
+    }
+    
+    // Add some metal barriers or caution tape between concrete blocks
+    for (let i = 0; i < barrierCount - 1; i++) {
+        if (Math.random() > 0.5) {
+            // Create a metal barrier
+            const poleGeometry = new THREE.CylinderGeometry(0.05, 0.05, 1.5, 8);
+            const poleMaterial = new THREE.MeshStandardMaterial({
+                color: 0x888888,
+                roughness: 0.7,
+                metalness: 0.5
+            });
+            
+            // First pole
+            const pole1 = new THREE.Mesh(poleGeometry, poleMaterial);
+            pole1.position.set(i * -2 - 1, 0.75, (i % 2 === 0) ? roadWidth/3 - 0.5 : -roadWidth/3 - 0.5);
+            barricadeGroup.add(pole1);
+            
+            // Second pole
+            const pole2 = new THREE.Mesh(poleGeometry, poleMaterial);
+            pole2.position.set((i+1) * -2 + 1, 0.75, (i % 2 === 0) ? -roadWidth/3 + 0.5 : roadWidth/3 + 0.5);
+            barricadeGroup.add(pole2);
+            
+            // Connect with caution tape
+            createCautionTape(pole1.position, pole2.position, barricadeGroup);
+        }
+    }
+    
+    // Position and rotate the entire barricade
+    barricadeGroup.position.set(x, y, z);
+    barricadeGroup.rotation.y = rotation;
+    
+    targetScene.add(barricadeGroup);
+    return barricadeGroup;
+}
+
+// Function to add warning stripes to barriers
+function addWarningStripes(barrier) {
+    // Add red and white warning stripes
+    const stripeGeometry = new THREE.PlaneGeometry(2.4, 0.3);
+    const redMaterial = new THREE.MeshBasicMaterial({
+        color: 0xff0000,
+        side: THREE.DoubleSide
+    });
+    const whiteMaterial = new THREE.MeshBasicMaterial({
+        color: 0xffffff,
+        side: THREE.DoubleSide
+    });
+    
+    // Create alternating stripes
+    for (let i = 0; i < 3; i++) {
+        const stripe = new THREE.Mesh(
+            stripeGeometry, 
+            i % 2 === 0 ? redMaterial : whiteMaterial
+        );
+        stripe.position.set(0, -0.3 + i * 0.3, 0.31);
+        barrier.add(stripe);
+    }
+}
+
+// Function to create caution tape between poles
+function createCautionTape(start, end, parent) {
+    // Calculate distance and direction
+    const direction = new THREE.Vector3().subVectors(end, start);
+    const distance = direction.length();
+    
+    // Create tape mesh
+    const tapeGeometry = new THREE.PlaneGeometry(distance, 0.1);
+    const tapeMaterial = new THREE.MeshBasicMaterial({
+        color: 0xffcc00, // Caution yellow
+        side: THREE.DoubleSide
+    });
+    
+    const tape = new THREE.Mesh(tapeGeometry, tapeMaterial);
+    
+    // Position midway between poles
+    const midpoint = new THREE.Vector3().addVectors(start, end).multiplyScalar(0.5);
+    tape.position.copy(midpoint);
+    
+    // Orient tape to face between poles
+    tape.lookAt(end);
+    tape.rotation.y += Math.PI/2;
+    
+    // Add to parent
+    parent.add(tape);
+    return tape;
+}
+
+// Function to create warning signs and traffic markers
+function createRoadSigns(x, y, z, rotation, targetScene) {
+    const signsGroup = new THREE.Group();
+    
+    // Create a few warning signs
+    for (let i = -1; i <= 1; i += 2) {
+        // Create sign post
+        const postGeometry = new THREE.CylinderGeometry(0.05, 0.05, 2, 8);
+        const postMaterial = new THREE.MeshStandardMaterial({
+            color: 0x888888,
+            roughness: 0.7,
+            metalness: 0.5
+        });
+        
+        const post = new THREE.Mesh(postGeometry, postMaterial);
+        post.position.set(-2, 1, i * 5);
+        signsGroup.add(post);
+        
+        // Create sign panel
+        const panelGeometry = new THREE.PlaneGeometry(0.8, 0.8);
+        
+        // Choose between different sign types
+        let panelMaterial;
+        if (Math.random() > 0.5) {
+            // Road closed sign (red and white)
+            panelMaterial = new THREE.MeshStandardMaterial({
+                color: 0xff0000,
+                roughness: 0.7,
+                metalness: 0.3,
+                side: THREE.DoubleSide
+            });
+        } else {
+            // Warning sign (yellow)
+            panelMaterial = new THREE.MeshStandardMaterial({
+                color: 0xffcc00,
+                roughness: 0.7,
+                metalness: 0.3,
+                side: THREE.DoubleSide
+            });
+        }
+        
+        const panel = new THREE.Mesh(panelGeometry, panelMaterial);
+        panel.position.set(0, 0.8, 0);
+        panel.rotation.y = Math.PI/2;
+        
+        // Tilt the sign to look damaged
+        panel.rotation.z = (Math.random() - 0.5) * 0.3;
+        
+        post.add(panel);
+    }
+    
+    // Add traffic cones
+    const coneCount = 4 + Math.floor(Math.random() * 4); // 4-7 cones
+    
+    for (let i = 0; i < coneCount; i++) {
+        const cone = createTrafficCone();
+        
+        // Position cones randomly across the road
+        cone.position.set(
+            -4 - Math.random() * 2,
+            0,
+            (Math.random() - 0.5) * 10
+        );
+        
+        // Knock some cones over
+        if (Math.random() > 0.7) {
+            const fallAxis = Math.random() > 0.5 ? 'x' : 'z';
+            cone.rotation[fallAxis] = Math.PI/2 * (Math.random() > 0.5 ? 1 : -1);
+            cone.position.y = 0.2;
+        }
+        
+        signsGroup.add(cone);
+    }
+    
+    // Position and rotate entire group
+    signsGroup.position.set(x, y, z);
+    signsGroup.rotation.y = rotation;
+    
+    targetScene.add(signsGroup);
+    return signsGroup;
+}
+
+// Function to create a traffic cone
+function createTrafficCone() {
+    const coneGroup = new THREE.Group();
+    
+    // Create the cone body
+    const coneGeometry = new THREE.CylinderGeometry(0.1, 0.3, 0.7, 16);
+    const coneMaterial = new THREE.MeshStandardMaterial({
+        color: 0xff6600, // Orange
+        roughness: 0.9,
+        metalness: 0.1
+    });
+    
+    const cone = new THREE.Mesh(coneGeometry, coneMaterial);
+    cone.position.y = 0.35;
+    coneGroup.add(cone);
+    
+    // Add reflective strips
+    const stripGeometry = new THREE.TorusGeometry(0.25, 0.03, 16, 32);
+    const stripMaterial = new THREE.MeshStandardMaterial({
+        color: 0xffffff,
+        emissive: 0x888888,
+        roughness: 0.5,
+        metalness: 0.8
+    });
+    
+    // Add two reflective strips
+    const strip1 = new THREE.Mesh(stripGeometry, stripMaterial);
+    strip1.position.y = 0.2;
+    strip1.rotation.x = Math.PI/2;
+    coneGroup.add(strip1);
+    
+    const strip2 = new THREE.Mesh(stripGeometry, stripMaterial);
+    strip2.position.y = 0.4;
+    strip2.rotation.x = Math.PI/2;
+    strip2.scale.set(0.7, 0.7, 0.7); // Smaller top strip
+    coneGroup.add(strip2);
+    
+    return coneGroup;
+}
+
+// Function to create road debris clusters
+function createRoadDebrisCluster(x, y, z, rotation, targetScene) {
+    const debrisGroup = new THREE.Group();
+    
+    // Create a pile of debris
+    const debrisCount = 15 + Math.floor(Math.random() * 10);
+    const debrisRadius = 7; // Spread radius
+    
+    for (let i = 0; i < debrisCount; i++) {
+        // Decide debris type
+        const debrisType = Math.floor(Math.random() * 4);
+        let debris;
+        
+        switch (debrisType) {
+            case 0: // Concrete chunk
+                debris = new THREE.Mesh(
+                    new THREE.DodecahedronGeometry(0.2 + Math.random() * 0.3, 0),
+                    new THREE.MeshStandardMaterial({
+                        color: 0xaaaaaa,
+                        roughness: 0.9
+                    })
+                );
+                break;
+                
+            case 1: // Metal piece
+                debris = new THREE.Mesh(
+                    new THREE.BoxGeometry(
+                        0.2 + Math.random() * 0.4,
+                        0.05 + Math.random() * 0.1,
+                        0.2 + Math.random() * 0.4
+                    ),
+                    new THREE.MeshStandardMaterial({
+                        color: 0x888888,
+                        roughness: 0.6,
+                        metalness: 0.7
+                    })
+                );
+                break;
+                
+            case 2: // Road asphalt chunk
+                debris = new THREE.Mesh(
+                    new THREE.BoxGeometry(
+                        0.3 + Math.random() * 0.4,
+                        0.1 + Math.random() * 0.2,
+                        0.3 + Math.random() * 0.4
+                    ),
+                    new THREE.MeshStandardMaterial({
+                        color: 0x333333,
+                        roughness: 0.9
+                    })
+                );
+                break;
+                
+            case 3: // Twisted metal rod
+                debris = new THREE.Mesh(
+                    new THREE.CylinderGeometry(0.03, 0.03, 0.5 + Math.random() * 0.8, 6),
+                    new THREE.MeshStandardMaterial({
+                        color: 0x8B4513,
+                        roughness: 0.7,
+                        metalness: 0.5
+                    })
+                );
+                break;
+        }
+        
+        // Position randomly within debris field
+        debris.position.set(
+            -4 - Math.random() * 2, // Further back from the barrier
+            Math.random() * 0.5,   // Height
+            (Math.random() - 0.5) * debrisRadius // Spread across road width
+        );
+        
+        // Random rotation
+        debris.rotation.set(
+            Math.random() * Math.PI * 2,
+            Math.random() * Math.PI * 2,
+            Math.random() * Math.PI * 2
+        );
+        
+        debrisGroup.add(debris);
+    }
+    
+    // Position and rotate the entire debris group
+    debrisGroup.position.set(x, y, z);
+    debrisGroup.rotation.y = rotation;
+    
+    targetScene.add(debrisGroup);
+    return debrisGroup;
 }
 
 // Function to create pistol model
@@ -2398,7 +3071,7 @@ let consumableAnimationId = null;
 let usingItem = false;
 let currentItemInUse = null;
 let itemUseStartTime = 0;
-let itemUseTimeout = null;
+let itemUseTimeout = null
 
 const HELD_ITEM_POSITION = new THREE.Vector3(0.3, -0.3, -0.5);
 const HELD_ITEM_ROTATION = new THREE.Euler(0, Math.PI, 0);
@@ -2453,17 +3126,585 @@ function createMenuScene() {
     menuScene.add(directionalLight);
 
     // Create floor
-    const floorGeometry = new THREE.PlaneGeometry(187.5, 187.5);
+    const floorGeometry = new THREE.PlaneGeometry(281.25, 281.25); // Increased from 187.5
     const floorMaterial = new THREE.MeshPhongMaterial({ 
-        color: 0x4a2f2f, 
+        color: 0x4a2f2f,  
         side: THREE.DoubleSide 
     });
     const menuFloor = new THREE.Mesh(floorGeometry, floorMaterial);
     menuFloor.rotation.x = -Math.PI / 2;
     menuScene.add(menuFloor);
 
+    // Add apocalyptic road to menu scene
+    createMenuApocalypticRoad();
+    addRoadBlockades(menuScene);
+
     // Create mountains
     createMountainsForMenu();
+}
+
+// Function to add road lamps along the apocalyptic road
+function addRoadLamps(roadLength, roadWidth, targetScene = scene) {
+    const lampCount = 16; // Number of lamps to place
+    const lampSpacing = roadLength / lampCount;
+    const lampOffset = roadWidth / 2 + 1; // Place lamps just outside the road edge
+    
+    // Create lamps along both sides of the road
+    for (let i = 0; i < lampCount; i++) {
+        // Calculate lamp positions along the road
+        const xPos = -roadLength/2 + i * lampSpacing + lampSpacing/2;
+        
+        // Left side lamp (negative Z) - faces toward the positive Z (toward the road)
+        const leftLampState = decideLampState();
+        createRoadLamp(xPos, 0, -lampOffset, leftLampState, targetScene, 'left');
+        
+        // Right side lamp (positive Z) - faces toward the negative Z (toward the road)
+        const rightLampState = decideLampState();
+        createRoadLamp(xPos, 0, lampOffset, rightLampState, targetScene, 'right');
+    }
+}
+
+// Function to decide lamp state based on probabilities
+function decideLampState() {
+    const random = Math.random();
+    if (random < 0.5) {
+        // 50% chance to be completely broken
+        return 'broken';
+    } else if (random < 0.8) {
+        // 30% chance to be working
+        return 'working';
+    } else {
+        // 20% chance to be damaged/flickering
+        return 'damaged';
+    }
+}
+
+// Function to create a road lamp with specified state
+function createRoadLamp(x, y, z, state, targetScene, side) {
+    // Create lamp post group
+    const lampGroup = new THREE.Group();
+    
+    // Create lamp post (vertical pole)
+    const poleGeometry = new THREE.CylinderGeometry(0.1, 0.1, 4.5, 8);
+    const poleMaterial = new THREE.MeshStandardMaterial({
+        color: 0x333333,
+        roughness: 0.8,
+        metalness: 0.5
+    });
+    
+    const pole = new THREE.Mesh(poleGeometry, poleMaterial);
+    pole.position.y = 2.25; // Half height
+    lampGroup.add(pole);
+    
+    // Create cross arm (horizontal part)
+    const armGeometry = new THREE.CylinderGeometry(0.07, 0.07, 1.5, 8);
+    const arm = new THREE.Mesh(armGeometry, poleMaterial);
+    arm.rotation.x = Math.PI / 2; // Correctly orient horizontally
+    arm.position.y = 4; // Top of pole
+    
+    // All lamps will have arms extending in the same local direction
+    // The entire lampGroup will be rotated later to make them face the road
+    arm.position.z = 0.65;
+    lampGroup.add(arm);
+    
+    // Create lamp head
+    const lampHeadGeometry = new THREE.CylinderGeometry(0.25, 0.25, 0.3, 8);
+    const lampHeadMaterial = new THREE.MeshStandardMaterial({
+        color: 0x111111,
+        roughness: 0.5,
+        metalness: 0.8
+    });
+    
+    const lampHead = new THREE.Mesh(lampHeadGeometry, lampHeadMaterial);
+    // Rotate to point downward correctly
+    lampHead.rotation.x = Math.PI / 2;
+    lampHead.position.y = 4;
+    
+    // Position lamp head at the end of the arm
+    lampHead.position.z = 1.3;
+    lampGroup.add(lampHead);
+    
+    // Create glass cover
+    const glassGeometry = new THREE.CylinderGeometry(0.2, 0.2, 0.2, 8);
+    
+    // Glass color based on state
+    const glassColor = state === 'broken' ? 0x333333 : 0xffffcc;
+    
+    const glassMaterial = new THREE.MeshStandardMaterial({
+        color: glassColor,
+        roughness: 0.2,
+        metalness: 0.8,
+        transparent: true,
+        opacity: state === 'broken' ? 0.3 : 0.7
+    });
+    
+    const glass = new THREE.Mesh(glassGeometry, glassMaterial);
+    glass.rotation.x = Math.PI / 2; // Correctly orient
+    
+    // Position glass below lamp head
+    glass.position.y = 3.8;
+    glass.position.z = 1.3;
+    lampGroup.add(glass);
+    
+    // Add light source if working or damaged
+    if (state !== 'broken') {
+        // Enhanced light settings for better visibility
+        const lightColor = 0xffffaa; // Warmer yellow light
+        
+        // Create a more intense light
+        const lightIntensity = state === 'working' ? 3.0 : 2.0; // Brighter for working lamps
+        const lightDistance = 25; // Increased light range
+        const light = new THREE.PointLight(lightColor, lightIntensity, lightDistance);
+        
+        // Position light below glass
+        light.position.set(0, 3.8, 1.3);
+        
+        // Add a subtle glow effect for working lamps
+        if (state === 'working') {
+            const glowGeometry = new THREE.SphereGeometry(0.3, 16, 16);
+            const glowMaterial = new THREE.MeshBasicMaterial({
+                color: 0xffffcc,
+                transparent: true,
+                opacity: 0.3,
+                side: THREE.BackSide
+            });
+            const glow = new THREE.Mesh(glowGeometry, glowMaterial);
+            glow.position.copy(light.position);
+            lampGroup.add(glow);
+        }
+        
+        // Store reference to the light for flickering
+        lampGroup.userData.light = light;
+        lampGroup.userData.state = state;
+        
+        // Add the light
+        lampGroup.add(light);
+        
+        // Add flickering animation for damaged lamps
+        if (state === 'damaged') {
+            animateDamagedLamp(lampGroup);
+        }
+    } else {
+        // For broken lamps, add damage details
+        addBrokenLampDetails(lampGroup, side);
+    }
+    
+    // Add random damage appearance to all lamps
+    addDamageDetails(lampGroup, state);
+    
+    // Position the lamp
+    lampGroup.position.set(x, y, z);
+    
+    // FIXED: Rotate the entire lamp group to face the road properly based on side
+    // Left side lamps need to face +Z (toward road)
+    // Right side lamps need to face -Z (toward road)
+    if (side === 'left') {
+        // No rotation needed for left side - they should face +Z by default
+    } else {
+        // For right side, rotate 180 degrees to face -Z
+        lampGroup.rotation.y = Math.PI;
+    }
+    
+    // Add collision data to the lamp group
+    lampGroup.userData.isLampPost = true;
+    lampGroup.userData.collisionRadius = 0.5; // Radius for collision detection
+    
+    // Add lamp to global array for collision detection
+    roadLampObjects.push(lampGroup);
+    
+    // Additional slight random rotation for variety (reduced amount)
+    lampGroup.rotation.y += (Math.random() - 0.5) * 0.1; // Reduced from 0.2 to 0.1
+    
+    // Add to scene
+    targetScene.add(lampGroup);
+    return lampGroup;
+}
+
+
+// Function to add damaged appearance details
+function addDamageDetails(lampGroup, state) {
+    // Apply more damage for broken and damaged lamps
+    const severity = state === 'broken' ? 1 : (state === 'damaged' ? 0.7 : 0.3);
+    
+    // Add rust patches
+    const rustCount = Math.floor(3 * severity) + 1;
+    for (let i = 0; i < rustCount; i++) {
+        const rustGeometry = new THREE.BoxGeometry(
+            0.05 + Math.random() * 0.1,
+            0.05 + Math.random() * 0.15,
+            0.05 + Math.random() * 0.1
+        );
+        
+        const rustMaterial = new THREE.MeshStandardMaterial({
+            color: 0x8B4513, // Rust brown
+            roughness: 1.0,
+            metalness: 0.3
+        });
+        
+        const rust = new THREE.Mesh(rustGeometry, rustMaterial);
+        
+        // Position on the pole at a random height and angle
+        const angle = Math.random() * Math.PI * 2;
+        const height = Math.random() * 4;
+        
+        rust.position.set(
+            Math.cos(angle) * 0.1,
+            height,
+            Math.sin(angle) * 0.1
+        );
+        
+        lampGroup.add(rust);
+    }
+    
+    // Tilt the pole slightly if damaged or broken
+    if (state !== 'working') {
+        const tiltAngle = (Math.random() - 0.5) * 0.1 * severity;
+        lampGroup.rotation.z = tiltAngle;
+    }
+    
+    // For really broken ones, bend the arm
+    if (state === 'broken' && Math.random() > 0.5) {
+        const arm = lampGroup.children[1]; // The arm is the second child
+        arm.rotation.y = (Math.random() - 0.5) * 0.5;
+    }
+}
+
+// Function to add details specific to broken lamps
+function addBrokenLampDetails(lampGroup, side) {
+    // Add broken glass effect - shattered glass pieces
+    if (Math.random() > 0.5) {
+        const glassShardCount = Math.floor(Math.random() * 4) + 2;
+        
+        for (let i = 0; i < glassShardCount; i++) {
+            const shardGeometry = new THREE.BoxGeometry(
+                0.03 + Math.random() * 0.05,
+                0.01,
+                0.03 + Math.random() * 0.05
+            );
+            
+            const shardMaterial = new THREE.MeshStandardMaterial({
+                color: 0xeeeeee,
+                transparent: true,
+                opacity: 0.7
+            });
+            
+            const shard = new THREE.Mesh(shardGeometry, shardMaterial);
+            
+            // Position shards below the lamp head
+            // Now we ALWAYS use positive z-position in local lamp coordinates
+            // since we're rotating the entire lamp group to face the road
+            shard.position.set(
+                (Math.random() - 0.5) * 0.3,
+                3.7 - Math.random() * 0.2,
+                1.3 + (Math.random() - 0.5) * 0.3  // Always use 1.3 instead of varying by side
+            );
+            
+            // Random rotation
+            shard.rotation.set(
+                Math.random() * Math.PI,
+                Math.random() * Math.PI,
+                Math.random() * Math.PI
+            );
+            
+            lampGroup.add(shard);
+        }
+    }
+    
+    // Make the lamp head tilted/damaged
+    const lampHead = lampGroup.children[2]; // The lamp head is the third child
+    lampHead.rotation.z = (Math.random() - 0.5) * 0.5; // Add a random tilt
+    
+    // Sometimes remove the glass completely
+    if (Math.random() > 0.7) {
+        const glass = lampGroup.children[3]; // The glass is the fourth child
+        glass.visible = false;
+    }
+}
+
+// Function to animate damaged/flickering lamps
+function animateDamagedLamp(lampGroup) {
+    const light = lampGroup.userData.light;
+    if (!light) return;
+    
+    // Set up improved flicker parameters
+    lampGroup.userData.flickerParams = {
+        nextFlickerTime: performance.now(),
+        intensity: 2.0, // Start with higher intensity
+        baseIntensity: 2.0, // Higher base intensity
+        maxIntensity: 3.5, // Maximum intensity during flickers
+        minIntensity: 0.2, // Minimum intensity during flickers
+        isFlickering: false,
+        sparkDue: false,
+        lastSparkTime: performance.now()
+    };
+    
+    // Function to create spark effect
+    function createSpark() {
+        const sparkGeometry = new THREE.SphereGeometry(0.03, 8, 8);
+        const sparkMaterial = new THREE.MeshBasicMaterial({
+            color: 0xffffcc,
+            transparent: true,
+            opacity: 0.9 // More visible sparks
+        });
+        
+        const spark = new THREE.Mesh(sparkGeometry, sparkMaterial);
+        spark.position.set(0, 3.8, 1.3); // Same position as light source
+        
+        // Random velocity for the spark
+        const velocity = new THREE.Vector3(
+            (Math.random() - 0.5) * 0.05,
+            -Math.random() * 0.02 - 0.01,
+            (Math.random() - 0.5) * 0.05
+        );
+        
+        spark.userData = {
+            velocity: velocity,
+            lifetime: 500 + Math.random() * 300,
+            created: performance.now()
+        };
+        
+        lampGroup.add(spark);
+        
+        // Animate the spark
+        function animateSpark() {
+            const now = performance.now();
+            const life = now - spark.userData.created;
+            
+            if (life > spark.userData.lifetime || !lampGroup.parent) {
+                if (lampGroup.parent) lampGroup.remove(spark);
+                return;
+            }
+            
+            // Move the spark
+            spark.position.x += spark.userData.velocity.x;
+            spark.position.y += spark.userData.velocity.y;
+            spark.position.z += spark.userData.velocity.z;
+            
+            // Apply gravity to velocity
+            spark.userData.velocity.y -= 0.001;
+            
+            // Fade out
+            const progress = life / spark.userData.lifetime;
+            spark.material.opacity = 0.9 * (1 - progress);
+            
+            requestAnimationFrame(animateSpark);
+        }
+        
+        requestAnimationFrame(animateSpark);
+    }
+    
+    // Function to update the flicker
+    function updateFlicker() {
+        if (!lampGroup.parent) return; // Stop if lamp was removed
+        
+        const now = performance.now();
+        const params = lampGroup.userData.flickerParams;
+        
+        // Check if it's time to flicker
+        if (now >= params.nextFlickerTime) {
+            if (params.isFlickering) {
+                // End flicker period, return to base intensity
+                light.intensity = params.baseIntensity;
+                params.isFlickering = false;
+                params.nextFlickerTime = now + Math.random() * 5000 + 2000; // 2-7 seconds until next flicker
+            } else {
+                // Start flicker period
+                params.isFlickering = true;
+                params.nextFlickerTime = now + Math.random() * 2000 + 500; // Flicker for 0.5-2.5 seconds
+                
+                // 50% chance to create sparks during this flicker period (increased from 30%)
+                params.sparkDue = Math.random() < 0.5;
+                params.lastSparkTime = now;
+            }
+        }
+        
+        // During flicker periods, vary the light intensity more dramatically
+        if (params.isFlickering) {
+            // More dramatic light flicker
+            if (Math.random() < 0.5) {
+                // Random intensity between min and max
+                light.intensity = params.minIntensity + Math.random() * (params.maxIntensity - params.minIntensity);
+            } else {
+                light.intensity = params.baseIntensity;
+            }
+            
+            // Create more frequent sparks during flicker events
+            if (params.sparkDue && now - params.lastSparkTime > 200) { // Reduced from 300ms
+                if (Math.random() < 0.3) { // Increased from 0.2
+                    createSpark();
+                    params.lastSparkTime = now;
+                }
+            }
+        }
+        
+        // Continue animation
+        requestAnimationFrame(updateFlicker);
+    }
+    
+    // Start the flicker animation
+    updateFlicker();
+}
+
+// Function to create apocalyptic road for menu scene
+function createMenuApocalypticRoad() {
+    // Road dimensions - spans the entire map width
+    const roadLength = 281.25; // Same as map width
+    const roadWidth = 15; // Width of the road
+    
+    // Create the main road surface
+    const roadGeometry = new THREE.PlaneGeometry(roadLength, roadWidth);
+    const roadMaterial = new THREE.MeshStandardMaterial({ 
+        color: 0x333333, // Dark gray for asphalt
+        roughness: 0.8,
+        metalness: 0.2
+    });
+    
+    const road = new THREE.Mesh(roadGeometry, roadMaterial);
+    road.rotation.x = -Math.PI / 2; // Lay flat like the floor
+    road.position.y = 0.05; // Slightly above the ground to prevent z-fighting
+    menuScene.add(road);
+    
+    // Add potholes to the road
+    addMenuPotholes(roadLength, roadWidth);
+    
+    // Add road markings (faded center line)
+    addMenuRoadMarkings(roadLength);
+    
+    // Add debris along the road edges
+    addMenuRoadDebris(roadLength, roadWidth);
+    
+    // Add road lamps along the road
+    addRoadLamps(roadLength, roadWidth, menuScene); // Pass menuScene as target scene
+}
+
+// Function to add potholes and cracks to the menu scene road
+function addMenuPotholes(roadLength, roadWidth) {
+    // Add potholes
+    const potholeCount = 12;
+    
+    for (let i = 0; i < potholeCount; i++) {
+        // Create pothole
+        const potholeRadius = 0.8 + Math.random() * 1.5;
+        const potholeGeometry = new THREE.CircleGeometry(potholeRadius, 12);
+        const potholeMaterial = new THREE.MeshStandardMaterial({
+            color: 0x1a1a1a, // Very dark gray
+            roughness: 1.0,
+            metalness: 0.0
+        });
+        
+        const pothole = new THREE.Mesh(potholeGeometry, potholeMaterial);
+        pothole.rotation.x = -Math.PI / 2;
+        
+        // Position along road
+        const xPos = (Math.random() - 0.5) * roadLength * 0.95;
+        const zPos = (Math.random() - 0.5) * roadWidth * 0.8; // Keep within road width
+        pothole.position.set(xPos, 0.06, zPos);
+        
+        menuScene.add(pothole);
+    }
+    
+    // Add cracks to road
+    const crackCount = 15;
+    
+    for (let i = 0; i < crackCount; i++) {
+        // Create a crack using box geometries
+        const crackLength = 2 + Math.random() * 5;
+        const crackWidth = 0.1 + Math.random() * 0.2;
+        
+        const crackGeometry = new THREE.BoxGeometry(crackLength, 0.02, crackWidth);
+        const crackMaterial = new THREE.MeshBasicMaterial({
+            color: 0x111111,
+            transparent: false
+        });
+        
+        const crack = new THREE.Mesh(crackGeometry, crackMaterial);
+        
+        // Position and rotation
+        const xPos = (Math.random() - 0.5) * roadLength * 0.9;
+        const zPos = (Math.random() - 0.5) * roadWidth * 0.8;
+        const rotation = Math.random() * Math.PI;
+        
+        crack.position.set(xPos, 0.07, zPos); // Slightly above road
+        crack.rotation.y = rotation;
+        
+        menuScene.add(crack);
+    }
+}
+
+// Function to add faded road markings to menu scene
+function addMenuRoadMarkings(roadLength) {
+    // Create dashed center line (faded and broken)
+    const dashCount = 40;
+    const dashLength = 3;
+    const dashWidth = 0.2;
+    
+    for (let i = 0; i < dashCount; i++) {
+        // Only create some dashes (to look broken)
+        if (Math.random() > 0.35) {
+            // Create a dash
+            const dashGeometry = new THREE.PlaneGeometry(dashLength, dashWidth);
+            const dashMaterial = new THREE.MeshBasicMaterial({ 
+                color: 0xCCCCCC, // Light gray for faded paint
+                transparent: true,
+                opacity: 0.2 + Math.random() * 0.3 // Varying opacity for worn look
+            });
+            
+            const dash = new THREE.Mesh(dashGeometry, dashMaterial);
+            dash.rotation.x = -Math.PI / 2; // Lay flat
+            
+            // Position dash along the road
+            const xPos = -roadLength/2 + roadLength * (i / dashCount) + roadLength/(dashCount*2);
+            dash.position.set(xPos, 0.08, 0); // Slightly above road
+            
+            menuScene.add(dash);
+        }
+    }
+}
+
+// Function to add debris along road edges in menu scene
+function addMenuRoadDebris(roadLength, roadWidth) {
+    const debrisCount = 30; // Debris for apocalyptic feel
+    const edgeOffset = roadWidth / 2; // Distance from center to edge of road
+    
+    for (let i = 0; i < debrisCount; i++) {
+        // Position along road length
+        const xPos = (Math.random() - 0.5) * roadLength * 0.95;
+        
+        // Position near road edges (either left or right side)
+        const side = Math.random() > 0.5 ? 1 : -1;
+        const zPos = side * (edgeOffset + 0.2 + Math.random() * 2); // Slightly outside road
+        
+        // Create debris - rock or rubble piece
+        const debrisSize = 0.1 + Math.random() * 0.4;
+        let debrisGeometry;
+        
+        // Different shapes for variety
+        if (Math.random() < 0.6) {
+            debrisGeometry = new THREE.DodecahedronGeometry(debrisSize, 0); // Rock-like
+        } else {
+            debrisGeometry = new THREE.BoxGeometry(
+                debrisSize * 1.5, 
+                debrisSize * 0.5, 
+                debrisSize * 1.2
+            ); // Chunk of concrete
+        }
+        
+        const debrisMaterial = new THREE.MeshStandardMaterial({
+            color: Math.random() > 0.5 ? 0x555555 : 0x3a3a3a, // Gray variations
+            roughness: 0.9,
+            metalness: 0.1
+        });
+        
+        const debris = new THREE.Mesh(debrisGeometry, debrisMaterial);
+        debris.position.set(xPos, debrisSize * 0.5, zPos); // Place on ground
+        debris.rotation.set(
+            Math.random() * Math.PI,
+            Math.random() * Math.PI,
+            Math.random() * Math.PI
+        );
+        
+        menuScene.add(debris);
+    }
 }
 
 // Update the toggleShop function to populate shop items
@@ -3227,39 +4468,288 @@ function animateHeldConsumable(itemType) {
 
 function createMountainsForMenu() {
     const spacing = 12;
-    const boundary = 87.5;
-    const offsetDistance = 8;
-
+    const boundary = 131.25;
+    const rows = 3;
+    
     const mountainPositions = [];
+    
+    // Road parameters - FIXED for precise edge alignment
+    const roadWidth = 15;
+    const roadHalfWidth = roadWidth / 2; // Exact road half-width
+    
+    // IMPORTANT: Define road direction (same as in game scene)
+    const roadDirection = 'x'; // Valid values: 'x' or 'z'
 
-    // Generate mountain positions
-    for (let x = -boundary; x <= boundary; x += spacing) {
-        mountainPositions.push([x, -boundary], [x, boundary]);
-        mountainPositions.push([x, -boundary + offsetDistance], [x, boundary - offsetDistance]);
-    }
-
-    for (let z = -boundary; z <= boundary; z += spacing) {
-        mountainPositions.push([-boundary, z], [boundary, z]);
-        mountainPositions.push([-boundary + offsetDistance, z], [boundary - offsetDistance, z]);
-    }
-
-    // Create mountains
-    mountainPositions.forEach(([x, z]) => {
-        const height = 20 + (Math.random() - 0.5) * 15;
-        const width = 8 + (Math.random() - 0.5) * 6;
+    // Generate mountain positions for multiple rows
+    for (let row = 0; row < rows; row++) {
+        const offsetDistance = 10 * row;
         
-        const mountainGeometry = new THREE.ConeGeometry(width, height, 4);
-        const mountainMaterial = new THREE.MeshPhongMaterial({ 
-            color: 0x4d3319,
-            flatShading: true 
+        // Generate positions along x-axis (top and bottom)
+        for (let x = -boundary - 10; x <= boundary + 10; x += spacing) {
+            // Skip mountains only if road runs along Z-axis AND at the boundary opening
+            const distanceFromCenterX = Math.abs(x);
+            const isInRoadPathX = roadDirection === 'z' && distanceFromCenterX <= roadHalfWidth;
+            
+            if (!isInRoadPathX) {
+                // For mountains near the road edge, position them precisely at the edge
+                let xOffset = 0;
+                
+                if (roadDirection === 'z' && Math.abs(distanceFromCenterX - roadHalfWidth) < 6) {
+                    // This mountain is near the road edge, align it precisely
+                    xOffset = distanceFromCenterX < roadHalfWidth ? 
+                              roadHalfWidth - distanceFromCenterX : // Push to the edge if inside
+                              (Math.random() - 0.5) * Math.min(3, Math.abs(distanceFromCenterX - roadHalfWidth)); // Small random if outside
+                } else {
+                    // Normal random offset for mountains away from road
+                    xOffset = (Math.random() - 0.5) * Math.min(6, Math.max(0, distanceFromCenterX - roadHalfWidth));
+                }
+                
+                mountainPositions.push({
+                    x: x + xOffset,
+                    z: -boundary + offsetDistance,
+                    scale: 1 - row * 0.15
+                });
+                
+                mountainPositions.push({
+                    x: x + xOffset,
+                    z: boundary - offsetDistance,
+                    scale: 1 - row * 0.15
+                });
+            }
+        }
+        
+        // Generate positions along z-axis (left and right)
+        for (let z = -boundary - 10; z <= boundary + 10; z += spacing) {
+            // Skip mountains only if road runs along X-axis AND at the boundary opening
+            const distanceFromCenterZ = Math.abs(z);
+            const isInRoadPathZ = roadDirection === 'x' && distanceFromCenterZ <= roadHalfWidth;
+            
+            if (!isInRoadPathZ) {
+                // For mountains near the road edge, position them precisely at the edge
+                let zOffset = 0;
+                
+                if (roadDirection === 'x' && Math.abs(distanceFromCenterZ - roadHalfWidth) < 6) {
+                    // This mountain is near the road edge, align it precisely
+                    zOffset = distanceFromCenterZ < roadHalfWidth ? 
+                             roadHalfWidth - distanceFromCenterZ : // Push to the edge if inside
+                             (Math.random() - 0.5) * Math.min(3, Math.abs(distanceFromCenterZ - roadHalfWidth)); // Small random if outside
+                } else {
+                    // Normal random offset for mountains away from road
+                    zOffset = (Math.random() - 0.5) * Math.min(6, Math.max(0, distanceFromCenterZ - roadHalfWidth));
+                }
+                
+                mountainPositions.push({
+                    x: -boundary + offsetDistance,
+                    z: z + zOffset,
+                    scale: 1 - row * 0.15
+                });
+                
+                mountainPositions.push({
+                    x: boundary - offsetDistance,
+                    z: z + zOffset,
+                    scale: 1 - row * 0.15
+                });
+            }
+        }
+    }
+
+    // Create mountains with refined road edge alignment
+    mountainPositions.forEach(pos => {
+        const height = 20 + (Math.random() - 0.5) * 24;
+        const width = 8 + (Math.random() - 0.5) * 9;
+        
+        // Apply position-specific scale
+        const scaledHeight = height * pos.scale;
+        const scaledWidth = width * pos.scale;
+        
+        // Check if this mountain would overlap the road
+        const distanceFromCenterX = Math.abs(pos.x);
+        const distanceFromCenterZ = Math.abs(pos.z);
+        
+        // More precise calculation - Consider mountain base radius relative to road edge
+        const mountainRadius = scaledWidth / 2;
+        
+        // Make sure mountain doesn't overlap road but can touch its edge exactly
+        const roadOverlapX = roadDirection === 'z' && distanceFromCenterX - mountainRadius < roadHalfWidth;
+        const roadOverlapZ = roadDirection === 'x' && distanceFromCenterZ - mountainRadius < roadHalfWidth;
+        
+        // Only create mountain if it doesn't overlap the road
+        if (!roadOverlapX && !roadOverlapZ) {
+            const mountainGeometry = new THREE.ConeGeometry(scaledWidth, scaledHeight, 4);
+            const mountainMaterial = new THREE.MeshPhongMaterial({ 
+                color: 0x4d3319,
+                flatShading: true 
+            });
+            
+            const mountain = new THREE.Mesh(mountainGeometry, mountainMaterial);
+            mountain.position.set(pos.x, scaledHeight/2, pos.z);
+            mountain.rotation.y = Math.random() * Math.PI / 2;
+            
+            menuScene.add(mountain);
+        }
+    });
+}
+
+// Function to create an apocalyptic road across the map
+function createApocalypticRoad() {
+    // Road dimensions - spans the entire map width
+    const roadLength = 281.25; // Same as map width
+    const roadWidth = 15; // Width of the road
+    
+    // Create the main road surface
+    const roadGeometry = new THREE.PlaneGeometry(roadLength, roadWidth);
+    const roadMaterial = new THREE.MeshStandardMaterial({ 
+        color: 0x333333, // Dark gray for asphalt
+        roughness: 0.8,
+        metalness: 0.2
+    });
+    
+    const road = new THREE.Mesh(roadGeometry, roadMaterial);
+    road.rotation.x = -Math.PI / 2; // Lay flat like the floor
+    road.position.y = 0.05; // Slightly above the ground to prevent z-fighting
+    scene.add(road);
+    
+    // Add potholes to the road
+    addPotholes(roadLength, roadWidth);
+    
+    // Add road markings (faded center line)
+    addRoadMarkings(roadLength);
+    
+    // Add debris along the road edges
+    addRoadDebris(roadLength, roadWidth);
+    
+    // Add road lamps along the road
+    addRoadLamps(roadLength, roadWidth);
+}
+
+// Function to add potholes and cracks to the road
+function addPotholes(roadLength, roadWidth) {
+    // Add potholes
+    const potholeCount = 12;
+    
+    for (let i = 0; i < potholeCount; i++) {
+        // Create pothole
+        const potholeRadius = 0.8 + Math.random() * 1.5;
+        const potholeGeometry = new THREE.CircleGeometry(potholeRadius, 12);
+        const potholeMaterial = new THREE.MeshStandardMaterial({
+            color: 0x1a1a1a, // Very dark gray
+            roughness: 1.0,
+            metalness: 0.0
         });
         
-        const mountain = new THREE.Mesh(mountainGeometry, mountainMaterial);
-        mountain.position.set(x, height/2, z);
-        mountain.rotation.y = Math.random() * Math.PI / 2;
+        const pothole = new THREE.Mesh(potholeGeometry, potholeMaterial);
+        pothole.rotation.x = -Math.PI / 2;
         
-        menuScene.add(mountain);
-    });
+        // Position along road
+        const xPos = (Math.random() - 0.5) * roadLength * 0.95;
+        const zPos = (Math.random() - 0.5) * roadWidth * 0.8; // Keep within road width
+        pothole.position.set(xPos, 0.06, zPos);
+        
+        scene.add(pothole);
+    }
+    
+    // Add cracks to road
+    const crackCount = 15;
+    
+    for (let i = 0; i < crackCount; i++) {
+        // Create a crack using box geometries
+        const crackLength = 2 + Math.random() * 5;
+        const crackWidth = 0.1 + Math.random() * 0.2;
+        
+        const crackGeometry = new THREE.BoxGeometry(crackLength, 0.02, crackWidth);
+        const crackMaterial = new THREE.MeshBasicMaterial({
+            color: 0x111111,
+            transparent: false
+        });
+        
+        const crack = new THREE.Mesh(crackGeometry, crackMaterial);
+        
+        // Position and rotation
+        const xPos = (Math.random() - 0.5) * roadLength * 0.9;
+        const zPos = (Math.random() - 0.5) * roadWidth * 0.8;
+        const rotation = Math.random() * Math.PI;
+        
+        crack.position.set(xPos, 0.07, zPos); // Slightly above road
+        crack.rotation.y = rotation;
+        
+        scene.add(crack);
+    }
+}
+
+// Function to add faded road markings
+function addRoadMarkings(roadLength) {
+    // Create dashed center line (faded and broken)
+    const dashCount = 40;
+    const dashLength = 3;
+    const dashWidth = 0.2;
+    
+    for (let i = 0; i < dashCount; i++) {
+        // Only create some dashes (to look broken)
+        if (Math.random() > 0.35) {
+            // Create a dash
+            const dashGeometry = new THREE.PlaneGeometry(dashLength, dashWidth);
+            const dashMaterial = new THREE.MeshBasicMaterial({ 
+                color: 0xCCCCCC, // Light gray for faded paint
+                transparent: true,
+                opacity: 0.2 + Math.random() * 0.3 // Varying opacity for worn look
+            });
+            
+            const dash = new THREE.Mesh(dashGeometry, dashMaterial);
+            dash.rotation.x = -Math.PI / 2; // Lay flat
+            
+            // Position dash along the road
+            const xPos = -roadLength/2 + roadLength * (i / dashCount) + roadLength/(dashCount*2);
+            dash.position.set(xPos, 0.08, 0); // Slightly above road
+            
+            scene.add(dash);
+        }
+    }
+}
+
+// Function to add debris along road edges
+function addRoadDebris(roadLength, roadWidth) {
+    const debrisCount = 30; // Debris for apocalyptic feel
+    const edgeOffset = roadWidth / 2; // Distance from center to edge of road
+    
+    for (let i = 0; i < debrisCount; i++) {
+        // Position along road length
+        const xPos = (Math.random() - 0.5) * roadLength * 0.95;
+        
+        // Position near road edges (either left or right side)
+        const side = Math.random() > 0.5 ? 1 : -1;
+        const zPos = side * (edgeOffset + 0.2 + Math.random() * 2); // Slightly outside road
+        
+        // Create debris - rock or rubble piece
+        const debrisSize = 0.1 + Math.random() * 0.4;
+        let debrisGeometry;
+        
+        // Different shapes for variety
+        if (Math.random() < 0.6) {
+            debrisGeometry = new THREE.DodecahedronGeometry(debrisSize, 0); // Rock-like
+        } else {
+            debrisGeometry = new THREE.BoxGeometry(
+                debrisSize * 1.5, 
+                debrisSize * 0.5, 
+                debrisSize * 1.2
+            ); // Chunk of concrete
+        }
+        
+        const debrisMaterial = new THREE.MeshStandardMaterial({
+            color: Math.random() > 0.5 ? 0x555555 : 0x3a3a3a, // Gray variations
+            roughness: 0.9,
+            metalness: 0.1
+        });
+        
+        const debris = new THREE.Mesh(debrisGeometry, debrisMaterial);
+        debris.position.set(xPos, debrisSize * 0.5, zPos); // Place on ground
+        debris.rotation.set(
+            Math.random() * Math.PI,
+            Math.random() * Math.PI,
+            Math.random() * Math.PI
+        );
+        
+        scene.add(debris);
+    }
 }
 
 // Add this function to update the HUD
@@ -3383,62 +4873,260 @@ document.getElementById('resumeButton').addEventListener('click', () => {
     document.body.requestPointerLock();
 });
 
+// Update the return to main menu button handler
 document.getElementById('returnToMainButton').addEventListener('click', () => {
-    // Reset game state
-    isPaused = false;
-    gameStarted = false;
+    // Remove any existing handler to avoid duplicate listeners
+    document.getElementById('returnToMainButton').replaceWith(
+        document.getElementById('returnToMainButton').cloneNode(true)
+    );
+    document.getElementById('returnToMainButton').addEventListener('click', returnToMainMenu);
+    
+    // Call the function
+    returnToMainMenu();
+});
 
-    resetGame();
+// Consolidated function to handle return to main menu with loading screen
+function returnToMainMenu() {
+    // Show loading screen immediately to prevent UI freeze appearance
+    const loadingScreen = document.createElement('div');
+    loadingScreen.id = 'menuLoadingScreen';
+    loadingScreen.style.cssText = `
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background-color: rgba(0, 0, 0, 0.8);
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        z-index: 10000;
+    `;
     
-    // Reset color selection
-    selectedColor = null;
-    playerColor = 0x00ff00;
+    // Add loading text
+    const loadingText = document.createElement('div');
+    loadingText.textContent = 'Returning to main menu...';
+    loadingText.style.cssText = `
+        color: white;
+        font-size: 24px;
+        margin-bottom: 20px;
+    `;
     
-    // Reset color buttons
-    document.querySelectorAll('.color-btn').forEach(btn => {
-        btn.classList.remove('selected');
+    // Add loading spinner
+    const spinner = document.createElement('div');
+    spinner.style.cssText = `
+        width: 50px;
+        height: 50px;
+        border: 5px solid #333;
+        border-top: 5px solid #ff5500;
+        border-radius: 50%;
+        animation: spin 1s linear infinite;
+    `;
+    
+    // Add spinner animation
+    const style = document.createElement('style');
+    style.textContent = `
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    `;
+    
+    document.head.appendChild(style);
+    loadingScreen.appendChild(loadingText);
+    loadingScreen.appendChild(spinner);
+    document.body.appendChild(loadingScreen);
+    
+    // Use setTimeout to allow the loading screen to render before heavy operations
+    setTimeout(() => {
+        // First stage - hide UI elements and reset game state
+        isPaused = false;
+        gameStarted = false;
+        
+        // Hide game elements first
+        document.getElementById('pauseMenu').style.display = 'none';
+        document.getElementById('gameScene').style.display = 'none';
+        document.getElementById('roundInfo').style.display = 'none';
+        document.getElementById('victoryScreen').style.display = 'none';
+        document.getElementById('hud').style.display = 'none';
+        
+        // Force cursor to be visible
+        document.body.style.cursor = 'auto';
+        
+        // Reset color selection and UI
+        selectedColor = null;
+        playerColor = 0x00ff00;
+        document.querySelectorAll('.color-btn').forEach(btn => {
+            btn.classList.remove('selected');
+        });
+        document.getElementById('startGame').disabled = true;
+        
+        // Use another timeout for the next batch of heavy operations
+        setTimeout(() => {
+            // Clean up game objects in batches
+            cleanupGameObjectsBatch(() => {
+                // After cleanup is complete, show menu and remove loading screen
+                document.getElementById('menu').style.display = 'block';
+                document.getElementById('backgroundScene').style.display = 'block';
+                
+                // Remove loading screen
+                document.getElementById('menuLoadingScreen').remove();
+            });
+        }, 50);
+    }, 50);
+}
+
+// Function to clean up game objects in batches to avoid UI freeze
+function cleanupGameObjectsBatch(onComplete) {
+    // Step 1: Clean up enemies (can be a large number)
+    cleanupEnemies(() => {
+        // Step 2: Clean up projectiles and bullets
+        cleanupProjectilesAndBullets(() => {
+            // Step 3: Reset player and camera
+            cleanupPlayerAndCamera(() => {
+                // Step 4: Clean up environment
+                cleanupEnvironment(() => {
+                    // Step 5: Reset game state variables
+                    resetGameState();
+                    
+                    // Step 6: Recreate menu scene
+                    createMenuScene();
+                    
+                    // All done
+                    if (onComplete) onComplete();
+                });
+            });
+        });
     });
-    
-    // Disable start game button
-    document.getElementById('startGame').disabled = true;
-    
-    // Hide game elements
-    document.getElementById('pauseMenu').style.display = 'none';
-    document.getElementById('gameScene').style.display = 'none';
+}
 
-    document.getElementById('roundInfo').style.display = 'none';
+// Cleanup functions split into smaller tasks
+
+function cleanupEnemies(callback) {
+    // Process in smaller batches if there are many enemies
+    const batchSize = 20;
+    let index = 0;
+    
+    function processBatch() {
+        const endIndex = Math.min(index + batchSize, enemies.length);
+        
+        for (let i = index; i < endIndex; i++) {
+            if (enemies[i] && enemies[i].parent) {
+                scene.remove(enemies[i]);
+            }
+        }
+        
+        index = endIndex;
+        
+        if (index < enemies.length) {
+            setTimeout(processBatch, 0); // Continue with next batch in next tick
+        } else {
+            // All enemies processed
+            enemies = [];
+            activeEnemies = [];
+            
+            // Go to next step
+            if (callback) callback();
+        }
+    }
+    
+    processBatch();
+}
+
+function cleanupProjectilesAndBullets(callback) {
+    // Clean up projectiles
+    for (const projectile of projectiles) {
+        if (projectile && projectile.parent) {
+            scene.remove(projectile);
+        }
+    }
+    projectiles.length = 0;
+    
+    // Clean up bullets
+    for (const bullet of bullets) {
+        if (bullet && bullet.parent) {
+            scene.remove(bullet);
+        }
+    }
+    bullets.length = 0;
+    
+    // Go to next step
+    setTimeout(callback, 0);
+}
+
+function cleanupPlayerAndCamera(callback) {
+    // Remove player from scene if it exists
+    if (player) {
+        // Make sure to remove weapon models from camera first
+        if (knifeModel) {
+            camera.remove(knifeModel);
+            knifeModel = null;
+        }
+        if (pistolModel) {
+            camera.remove(pistolModel);
+            pistolModel = null;
+        }
+        if (heldConsumableModel) {
+            camera.remove(heldConsumableModel);
+            heldConsumableModel = null;
+        }
+        scene.remove(player);
+        player = null; 
+    }
     
     // Clean up UI elements
     cleanupGameUI();
     
-    // Show menu elements
-    document.getElementById('menu').style.display = 'block';
-    document.getElementById('backgroundScene').style.display = 'block';
-    
-    // Reset player and camera
-    if (player) {
-        scene.remove(player);
-        player = null;
-    }
-    
+    // Go to next step
+    setTimeout(callback, 0);
+}
+
+function cleanupEnvironment(callback) {
     // Clear mountains
     mountains.forEach(mountain => scene.remove(mountain));
     mountains = [];
     
-    // Hide HUD
-    document.getElementById('hud').style.display = 'none';
+    // Clear road blockades
+    clearRoadBlockades();
     
-    // Reset stats
+    // Clear lamp objects
+    roadLampObjects = [];
+    
+    // Go to next step
+    setTimeout(callback, 0);
+}
+
+function resetGameState() {
+    // Reset game state
+    isRoundActive = false;
+    isGameOver = false;
+    currentRound = 0;
+    
+    // Reset player stats
     health = 100;
     shield = 0;
+    playerCoins = 0;
     
-    // FIXED: Clear countdown and hide round information
+    // Reset weapon stats
+    pistolAmmo = pistolMaxAmmo;
+    pistolReloading = false;
+    
+    // Clear any running countdown
     if (countdownInterval) {
         clearInterval(countdownInterval);
+        countdownInterval = null;
     }
-    document.getElementById('roundInfo').style.display = 'none';
-    document.getElementById('countdown').style.display = 'none';
-});
+    
+    // Make sure coin system is reset
+    infiniteMoneyCheat = false;
+    if (originalCoinColor) {
+        const coinDisplay = document.getElementById('coinDisplay');
+        if (coinDisplay) {
+            coinDisplay.style.color = originalCoinColor;
+        }
+    }
+}
 
 // Add these event listeners after your other pause menu event listeners
 document.getElementById('controlsButtonPause').addEventListener('click', () => {
@@ -3664,7 +5352,8 @@ function spawnFirstBoss(config) {
     const boss = new THREE.Mesh(geometry, material);
     
     // Position boss at center of map, but further back
-    const spawnRadius = 50;
+    // UPDATED to match expanded map size
+    const spawnRadius = 90; // Increased from 50
     const angle = Math.random() * Math.PI * 2;
     boss.position.x = Math.cos(angle) * spawnRadius;
     boss.position.z = Math.sin(angle) * spawnRadius;
@@ -4189,7 +5878,8 @@ function spawnEnemy(enemyType) {
     const enemy = new THREE.Mesh(geometry, material);
     
     // Position enemy at a random location on the edge of the map
-    const spawnRadius = 70;
+    // UPDATED from 70 to match expanded map boundaries
+    const spawnRadius = 100; // Increased from 70 to spawn closer to the expanded map edges
     const angle = Math.random() * Math.PI * 2;
     enemy.position.x = Math.cos(angle) * spawnRadius;
     enemy.position.z = Math.sin(angle) * spawnRadius;
@@ -6397,7 +8087,8 @@ function spawnWardenBoss(config) {
     const boss = new THREE.Mesh(geometry, material);
     
     // Position boss at center of map, but further back
-    const spawnRadius = 60;
+    // UPDATED spawn radius to match expanded map
+    const spawnRadius = 100; // Increased from 60
     const angle = Math.random() * Math.PI * 2;
     boss.position.x = Math.cos(angle) * spawnRadius;
     boss.position.z = Math.sin(angle) * spawnRadius;
@@ -6464,7 +8155,7 @@ function spawnPhantomBoss(config) {
     const boss = new THREE.Mesh(geometry, material);
     
     // Position boss
-    const spawnRadius = 50;
+    const spawnRadius = 90;
     const angle = Math.random() * Math.PI * 2;
     boss.position.x = Math.cos(angle) * spawnRadius;
     boss.position.z = Math.sin(angle) * spawnRadius;
@@ -6641,8 +8332,8 @@ function moveEnemy(enemy, direction, speed = null) {
     enemy.position.x += movement.x;
     enemy.position.z += movement.z;
     
-    // Boundary check
-    const boundary = 75;
+    // Boundary check - UPDATED to match expanded map size
+    const boundary = 112.5; // Updated from 75 to match player boundary limits
     enemy.position.x = Math.max(-boundary, Math.min(boundary, enemy.position.x));
     enemy.position.z = Math.max(-boundary, Math.min(boundary, enemy.position.z));
     
@@ -6684,9 +8375,38 @@ function checkEnemyCollisions(enemy, originalX, originalZ) {
         }
     }
     
-    return false;
+    // Check collisions with lamp posts
+    for (const lamp of roadLampObjects) {
+        const distToLamp = Math.sqrt(
+            Math.pow(enemy.position.x - lamp.position.x, 2) +
+            Math.pow(enemy.position.z - lamp.position.z, 2)
+        );
+        
+        const enemyRadius = enemy.geometry.parameters.width / 2;
+        
+        if (distToLamp < (lamp.userData.collisionRadius + enemyRadius)) {
+            return true; // Collision with lamp post
+        }
+    }
+    
+    // NEW: Check collisions with road blockade areas
+    const roadEndX = 110; // Same as in addRoadBlockades
+    const roadWidth = 15;
+    const blockadeDepth = 12; // How "deep" the blockade area is
+    const enemyRadius = enemy.geometry.parameters.width / 2;
+    
+    // East blockade area (positive X)
+    if (Math.abs(enemy.position.x - roadEndX) < blockadeDepth && Math.abs(enemy.position.z) < roadWidth / 2 + 5) {
+        return true; // Collision with east blockade area
+    }
+    
+    // West blockade area (negative X)
+    if (Math.abs(enemy.position.x + roadEndX) < blockadeDepth && Math.abs(enemy.position.z) < roadWidth / 2 + 5) {
+        return true; // Collision with west blockade area
+    }
+    
+    return false; // No collision detected
 }
-
 // Projectile system
 const projectiles = [];
 
@@ -7355,6 +9075,11 @@ function resetGame() {
     activeEnemies = [];
     projectiles.length = 0;
     bullets.length = 0;
+    roadLampObjects = [];
+
+    // Clear mountains
+    mountains.forEach(mountain => scene.remove(mountain));
+    mountains = [];
     
     // Remove player from scene if it exists
     if (player) {
@@ -7377,6 +9102,8 @@ function resetGame() {
     
     // Clean up UI elements
     cleanupGameUI();
+
+    clearRoadBlockades();
     
     // Reset game state
     isRoundActive = false;
