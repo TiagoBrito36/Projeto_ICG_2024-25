@@ -602,6 +602,14 @@ function loadAbandonedCarModel(x = 20, z = 4, rotationY = Math.PI, targetScene =
                 collisionDepth: 8,  // Length for collision detection
                 collisionRadius: 4  // Simple radius for simpler calculations
             };
+
+            // Add shadow casting to all meshes in the model
+            car.traverse(function(node) {
+                if (node.isMesh) {
+                    node.castShadow = true;
+                    node.receiveShadow = true;
+                }
+            });
             
             // Add to appropriate scene
             targetScene.add(car);
@@ -1541,6 +1549,8 @@ function createKnifeModel() {
         metalness: 0.1
     });
     const handle = new THREE.Mesh(handleGeometry, handleMaterial);
+    handle.castShadow = true;
+    handle.receiveShadow = true;
     
     // Make blade bigger and more reflective
     const bladeGeometry = new THREE.BoxGeometry(0.04, 0.35, 0.1);
@@ -1552,6 +1562,8 @@ function createKnifeModel() {
     });
     const blade = new THREE.Mesh(bladeGeometry, bladeMaterial);
     blade.position.y = 0.25; // Position blade above handle
+    blade.castShadow = true;
+    blade.receiveShadow = true;
     
     // Create knife group
     knifeModel = new THREE.Group();
@@ -1574,6 +1586,69 @@ function createKnifeModel() {
     // Ensure visibility
     knifeModel.visible = (inventory[selectedSlot] === 0);
     return knifeModel;
+}
+
+function createPistolModel() {
+    if (pistolModel) {
+        camera.remove(pistolModel);
+    }
+    
+    // Create pistol body
+    const pistolBody = new THREE.BoxGeometry(0.1, 0.15, 0.3);
+    const pistolMaterial = new THREE.MeshStandardMaterial({
+        color: 0x333333,
+        roughness: 0.3,
+        metalness: 0.8
+    });
+    const body = new THREE.Mesh(pistolBody, pistolMaterial);
+    body.castShadow = true;
+    body.receiveShadow = true;
+    
+    // Create pistol handle
+    const handleGeometry = new THREE.BoxGeometry(0.08, 0.25, 0.1);
+    const handleMaterial = new THREE.MeshStandardMaterial({
+        color: 0x222222,
+        roughness: 0.5,
+        metalness: 0.3
+    });
+    const handle = new THREE.Mesh(handleGeometry, handleMaterial);
+    handle.position.set(0, -0.2, 0.05);
+    handle.castShadow = true;
+    handle.receiveShadow = true;
+    
+    // Create barrel
+    const barrelGeometry = new THREE.CylinderGeometry(0.03, 0.03, 0.3, 16);
+    const barrelMaterial = new THREE.MeshStandardMaterial({
+        color: 0x444444,
+        roughness: 0.2,
+        metalness: 0.9
+    });
+    const barrel = new THREE.Mesh(barrelGeometry, barrelMaterial);
+    barrel.rotation.x = Math.PI / 2;
+    barrel.position.set(0, 0.05, 0.25);
+    barrel.castShadow = true;
+    barrel.receiveShadow = true;
+    
+    // Create pistol group
+    pistolModel = new THREE.Group();
+    pistolModel.add(body);
+    pistolModel.add(handle);
+    pistolModel.add(barrel);
+    
+    // Position the pistol in view using the constants
+    pistolModel.position.copy(PISTOL_IDLE_POSITION);
+    pistolModel.rotation.copy(PISTOL_IDLE_ROTATION);
+    
+    // Add a dedicated light
+    const pistolLight = new THREE.PointLight(0xffffff, 1.5, 1);
+    pistolLight.position.set(0, 0, -0.2);
+    pistolModel.add(pistolLight);
+    
+    camera.add(pistolModel);
+    console.log("Pistol model created");
+    
+    pistolModel.visible = (inventory[selectedSlot] === WEAPON_TYPES.PISTOL);
+    return pistolModel;
 }
 
 // Add this debug function to help position the knife
@@ -1751,7 +1826,6 @@ function updatePlayer() {
         const moveTime = Date.now() * 0.003;
         const swayX = Math.sin(moveTime) * 0.004;
         const swayY = Math.cos(moveTime * 0.7) * 0.004;
-        visualizeCollisionAreas
         knifeModel.position.x = THREE.MathUtils.lerp(knifeModel.position.x, 0.35 + swayX, 0.1);
         knifeModel.position.y = THREE.MathUtils.lerp(knifeModel.position.y, -0.35 + swayY, 0.1);
     } else if (knifeModel) {
@@ -1973,21 +2047,34 @@ function updateShopInterface() {
 function startGame() {
     // Create floor for game scene
     const floorGeometry = new THREE.PlaneGeometry(281.25, 281.25);
-    const floorMaterial = new THREE.MeshBasicMaterial({ color: 0x4a2f2f, side: THREE.DoubleSide });
+    const floorMaterial = new THREE.MeshStandardMaterial({ 
+        color: 0x4a2f2f, 
+        side: THREE.DoubleSide,
+        receiveShadow: true // Enable shadows on floor
+    });
     const floor = new THREE.Mesh(floorGeometry, floorMaterial);
     floor.rotation.x = -Math.PI / 2;
+    floor.receiveShadow = true; // Make floor receive shadows
     scene.add(floor);
 
+    // Add fog to the scene for atmosphere
+    scene.fog = new THREE.FogExp2(0x87CEEB, 0.003);
+
+    // Initialize the day-night cycle
+    initDayNightSystem();
+    
+    // Rest of your existing startGame function...
     createApocalypticRoad();
     addRoadBlockades();
     addAbandonedGasStation();
     addEnvironmentalObjects();
 
-    // Create player with normal height
+    // Enable shadows on player
     const playerGeometry = new THREE.BoxGeometry(1, NORMAL_HEIGHT, 1);
-    const playerMaterial = new THREE.MeshBasicMaterial({ color: playerColor });
+    const playerMaterial = new THREE.MeshStandardMaterial({ color: playerColor });
     player = new THREE.Mesh(playerGeometry, playerMaterial);
     player.position.y = NORMAL_HEIGHT/2;
+    player.castShadow = true; // Player casts shadows
     scene.add(player);
 
     // Clear mountains array
@@ -2267,6 +2354,8 @@ function createAbandonedVehicle(x, y, z, rotation, targetScene) {
     });
     const body = new THREE.Mesh(bodyGeometry, bodyMaterial);
     body.position.y = height/2;
+    body.castShadow = true;
+    body.receiveShadow = true;
     vehicleGroup.add(body);
     
     // Cabin (for truck)
@@ -2747,64 +2836,6 @@ function createRoadDebrisCluster(x, y, z, rotation, targetScene) {
     return debrisGroup;
 }
 
-// Function to create pistol model
-function createPistolModel() {
-    if (pistolModel) {
-        camera.remove(pistolModel);
-    }
-    
-    // Create pistol body
-    const pistolBody = new THREE.BoxGeometry(0.1, 0.15, 0.3);
-    const pistolMaterial = new THREE.MeshStandardMaterial({
-        color: 0x333333,
-        roughness: 0.3,
-        metalness: 0.8
-    });
-    const body = new THREE.Mesh(pistolBody, pistolMaterial);
-    
-    // Create pistol handle
-    const handleGeometry = new THREE.BoxGeometry(0.08, 0.25, 0.1);
-    const handleMaterial = new THREE.MeshStandardMaterial({
-        color: 0x222222,
-        roughness: 0.5,
-        metalness: 0.3
-    });
-    const handle = new THREE.Mesh(handleGeometry, handleMaterial);
-    handle.position.set(0, -0.2, 0.05);
-    
-    // Create barrel
-    const barrelGeometry = new THREE.CylinderGeometry(0.03, 0.03, 0.3, 16);
-    const barrelMaterial = new THREE.MeshStandardMaterial({
-        color: 0x444444,
-        roughness: 0.2,
-        metalness: 0.9
-    });
-    const barrel = new THREE.Mesh(barrelGeometry, barrelMaterial);
-    barrel.rotation.x = Math.PI / 2;
-    barrel.position.set(0, 0.05, 0.25);
-    
-    // Create pistol group
-    pistolModel = new THREE.Group();
-    pistolModel.add(body);
-    pistolModel.add(handle);
-    pistolModel.add(barrel);
-    
-    // Position the pistol in view using the constants
-    pistolModel.position.copy(PISTOL_IDLE_POSITION);
-    pistolModel.rotation.copy(PISTOL_IDLE_ROTATION);
-    
-    // Add a dedicated light
-    const pistolLight = new THREE.PointLight(0xffffff, 1.5, 1);
-    pistolLight.position.set(0, 0, -0.2);
-    pistolModel.add(pistolLight);
-    
-    camera.add(pistolModel);
-    console.log("Pistol model created");
-    
-    pistolModel.visible = (inventory[selectedSlot] === WEAPON_TYPES.PISTOL);
-    return pistolModel;
-}
-
 // Improved pistol firing animation with forced reset
 function animatePistolFire() {
     if (!pistolModel || pistolReloading) return;
@@ -2942,6 +2973,9 @@ function createBullet() {
     const bulletGeometry = new THREE.CylinderGeometry(0.02, 0.02, 0.08, 8);
     const bulletMaterial = new THREE.MeshBasicMaterial({ color: 0xffff00 });
     const bullet = new THREE.Mesh(bulletGeometry, bulletMaterial);
+    
+    // Add shadow casting to bullet
+    bullet.castShadow = true;
     
     // Get camera position and direction
     const cameraPosition = new THREE.Vector3();
@@ -3278,22 +3312,64 @@ document.addEventListener('DOMContentLoaded', () => {
 
 // Create floor and mountains for menu background
 function createMenuScene() {
+    // Clear any existing objects in the menu scene
+    while(menuScene.children.length > 0) { 
+        menuScene.remove(menuScene.children[0]); 
+    }
+    
+    // Enable shadows in renderer
+    menuRenderer.shadowMap.enabled = true;
+    menuRenderer.shadowMap.type = THREE.PCFSoftShadowMap;
+
     // Add lights first
     const ambientLight = new THREE.AmbientLight(0x404040);
     menuScene.add(ambientLight);
 
-    const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
-    directionalLight.position.set(1, 1, 1);
+    // Add sun directional light with shadows (positioned at noon)
+    const directionalLight = new THREE.DirectionalLight(0xffffcc, 1.0);
+    directionalLight.position.set(0, 100, 0); // Sun at noon position (directly overhead)
+    directionalLight.castShadow = true;
+    
+    // Configure shadow properties
+    directionalLight.shadow.mapSize.width = 2048;
+    directionalLight.shadow.mapSize.height = 2048;
+    directionalLight.shadow.camera.near = 0.5;
+    directionalLight.shadow.camera.far = 500;
+    directionalLight.shadow.camera.left = -100;
+    directionalLight.shadow.camera.right = 100;
+    directionalLight.shadow.camera.top = 100;
+    directionalLight.shadow.camera.bottom = -100;
     menuScene.add(directionalLight);
 
+    // Create visual object for sun (larger size)
+    const sunGeometry = new THREE.SphereGeometry(20, 16, 16);
+    const sunMaterial = new THREE.MeshBasicMaterial({ color: 0xffff80 });
+    const sunObject = new THREE.Mesh(sunGeometry, sunMaterial);
+    sunObject.position.set(0, 350, 0); // Position sun high in the sky (noon)
+    menuScene.add(sunObject);
+    
+    // Create sky sphere
+    const skyGeometry = new THREE.SphereGeometry(400, 32, 32);
+    const skyMaterial = new THREE.MeshBasicMaterial({ 
+        color: 0x87CEEB, // Bright blue sky for noon
+        side: THREE.BackSide,
+        fog: false
+    });
+    const skySphere = new THREE.Mesh(skyGeometry, skyMaterial);
+    menuScene.add(skySphere);
+
+    // Add fog to the scene for atmosphere
+    menuScene.fog = new THREE.FogExp2(0x87CEEB, 0.003);
+
     // Create floor
-    const floorGeometry = new THREE.PlaneGeometry(281.25, 281.25); // Increased from 187.5
+    const floorGeometry = new THREE.PlaneGeometry(281.25, 281.25);
     const floorMaterial = new THREE.MeshPhongMaterial({ 
         color: 0x4a2f2f,  
         side: THREE.DoubleSide 
     });
     const menuFloor = new THREE.Mesh(floorGeometry, floorMaterial);
     menuFloor.rotation.x = -Math.PI / 2;
+    menuFloor.receiveShadow = true; // Enable floor to receive shadows
     menuScene.add(menuFloor);
 
     // Add apocalyptic road to menu scene
@@ -3419,6 +3495,11 @@ function createRoadLamp(x, y, z, state, targetScene, side) {
     
     const pole = new THREE.Mesh(poleGeometry, poleMaterial);
     pole.position.y = 2.25; // Half height
+    
+    // Add shadows to pole
+    pole.castShadow = true;
+    pole.receiveShadow = true;
+    
     lampGroup.add(pole);
     
     // Create cross arm (horizontal part)
@@ -3426,6 +3507,10 @@ function createRoadLamp(x, y, z, state, targetScene, side) {
     const arm = new THREE.Mesh(armGeometry, poleMaterial);
     arm.rotation.x = Math.PI / 2; // Correctly orient horizontally
     arm.position.y = 4; // Top of pole
+    
+    // Add shadows to arm
+    arm.castShadow = true;
+    arm.receiveShadow = true;
     
     // All lamps will have arms extending in the same local direction
     // The entire lampGroup will be rotated later to make them face the road
@@ -3444,6 +3529,10 @@ function createRoadLamp(x, y, z, state, targetScene, side) {
     // Rotate to point downward correctly
     lampHead.rotation.x = Math.PI / 2;
     lampHead.position.y = 4;
+    
+    // Add shadows to lamp head
+    lampHead.castShadow = true;
+    lampHead.receiveShadow = true;
     
     // Position lamp head at the end of the arm
     lampHead.position.z = 1.3;
@@ -3465,6 +3554,10 @@ function createRoadLamp(x, y, z, state, targetScene, side) {
     
     const glass = new THREE.Mesh(glassGeometry, glassMaterial);
     glass.rotation.x = Math.PI / 2; // Correctly orient
+    
+    // Add shadows to glass
+    glass.castShadow = true;
+    glass.receiveShadow = true;
     
     // Position glass below lamp head
     glass.position.y = 3.8;
@@ -3544,7 +3637,6 @@ function createRoadLamp(x, y, z, state, targetScene, side) {
     targetScene.add(lampGroup);
     return lampGroup;
 }
-
 
 // Function to add damaged appearance details
 function addDamageDetails(lampGroup, state) {
@@ -3779,6 +3871,275 @@ function addEnvironmentalObjects() {
     createDeadTrees();
 }
 
+// Day-Night Cycle System Variables
+let gameTime = {
+    hour: 12, // Start at noon (12:00)
+    minute: 0,
+    timeString: "12:00",
+    isNight: false
+};
+
+// Lighting objects
+let sunLight, moonLight, skyLight;
+let sunObject, moonObject;
+let skySphere;
+
+// Initialize day-night cycle system
+function initDayNightSystem() {
+    // Enable shadows in renderer
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    
+    // Create sun directional light
+    sunLight = new THREE.DirectionalLight(0xffffcc, 1.0);
+    sunLight.position.set(0, 100, 0);
+    sunLight.castShadow = true;
+    
+    // Configure shadow properties
+    sunLight.shadow.mapSize.width = 2048;
+    sunLight.shadow.mapSize.height = 2048;
+    sunLight.shadow.camera.near = 0.5;
+    sunLight.shadow.camera.far = 500;
+    sunLight.shadow.camera.left = -100;
+    sunLight.shadow.camera.right = 100;
+    sunLight.shadow.camera.top = 100;
+    sunLight.shadow.camera.bottom = -100;
+    
+    // Create moon light (dimmer than sun)
+    moonLight = new THREE.DirectionalLight(0x8888ff, 0.3);
+    moonLight.position.set(0, 100, 0);
+    moonLight.castShadow = true;
+    
+    // Configure moon shadow properties (same as sun)
+    moonLight.shadow.mapSize.width = 2048;
+    moonLight.shadow.mapSize.height = 2048;
+    moonLight.shadow.camera.near = 0.5;
+    moonLight.shadow.camera.far = 500;
+    moonLight.shadow.camera.left = -100;
+    moonLight.shadow.camera.right = 100;
+    moonLight.shadow.camera.top = 100;
+    moonLight.shadow.camera.bottom = -100;
+    
+    // Add ambient light (sky light)
+    skyLight = new THREE.AmbientLight(0x555555, 0.5);
+    
+    // Create visual objects for sun and moon (LARGER SIZE)
+    const sunGeometry = new THREE.SphereGeometry(20, 16, 16); // Increased from 10
+    const sunMaterial = new THREE.MeshBasicMaterial({ color: 0xffff80 });
+    sunObject = new THREE.Mesh(sunGeometry, sunMaterial);
+    
+    const moonGeometry = new THREE.SphereGeometry(16, 16, 16); // Increased from 8
+    const moonMaterial = new THREE.MeshBasicMaterial({ color: 0xdddddd });
+    moonObject = new THREE.Mesh(moonGeometry, moonMaterial);
+    
+    // Create sky sphere
+    const skyGeometry = new THREE.SphereGeometry(400, 32, 32);
+    const skyMaterial = new THREE.MeshBasicMaterial({ 
+        color: 0x87CEEB, 
+        side: THREE.BackSide,
+        fog: false
+    });
+    skySphere = new THREE.Mesh(skyGeometry, skyMaterial);
+    
+    // Add everything to scene
+    scene.add(sunLight);
+    scene.add(moonLight);
+    scene.add(skyLight);
+    scene.add(sunObject);
+    scene.add(moonObject);
+    scene.add(skySphere);
+    
+    // Initialize positions
+    updateDayNightCycle(1); // Set initial state for round 1
+}
+
+// Update day-night cycle based on current round
+function updateDayNightCycle(round) {
+    // Calculate time based on round (12:00 at round 1, 00:00 at round 20)
+    const minutesPerRound = 36; // (12 hours * 60 minutes) / 20 rounds = 36 minutes per round
+    const totalMinutes = (round - 1) * minutesPerRound;
+    
+    // Time ranges from 12:00 (noon) to 00:00 (midnight)
+    gameTime.hour = Math.floor((12 + totalMinutes / 60) % 24);
+    gameTime.minute = Math.floor(totalMinutes % 60);
+    gameTime.timeString = `${String(gameTime.hour).padStart(2, '0')}:${String(gameTime.minute).padStart(2, '0')}`;
+    gameTime.isNight = gameTime.hour >= 18 || gameTime.hour < 6;
+    
+    // Calculate sun and moon positions based on time
+    // Adjust the angle calculation to correctly position based on 12:00 -> 00:00
+    const dayProgress = ((gameTime.hour + gameTime.minute / 60) % 24) / 24;
+    const sunAngle = Math.PI * (dayProgress * 2 - 0.5); // Start at noon (high point)
+    const moonAngle = sunAngle + Math.PI; // Moon is opposite to sun
+    
+    // Position sun (larger distance for larger objects)
+    const sunDistance = 350;
+    sunObject.position.x = Math.cos(sunAngle) * sunDistance;
+    sunObject.position.y = Math.sin(sunAngle) * sunDistance;
+    sunObject.position.z = 0;
+    
+    // Position moon (larger distance for larger objects)
+    const moonDistance = 350;
+    moonObject.position.x = Math.cos(moonAngle) * moonDistance;
+    moonObject.position.y = Math.sin(moonAngle) * moonDistance;
+    moonObject.position.z = 0;
+    
+    // Position directional lights to match sun and moon
+    sunLight.position.copy(sunObject.position.clone().normalize().multiplyScalar(150));
+    moonLight.position.copy(moonObject.position.clone().normalize().multiplyScalar(150));
+    
+    // Set light intensities based on sun/moon position
+    const sunHeight = Math.sin(sunAngle);
+    const moonHeight = Math.sin(moonAngle);
+    
+    // Calculate sun and moon light intensities based on height above horizon
+    const sunIntensity = Math.max(0, Math.min(1, sunHeight * 1.5));
+    const moonIntensity = Math.max(0, Math.min(0.3, moonHeight * 0.6));
+    
+    sunLight.intensity = sunIntensity;
+    moonLight.intensity = moonIntensity;
+    
+    // Manage sky colors
+    updateSkyColor(sunHeight, moonHeight);
+    
+    // Update lamps based on time
+    updateLamps(sunHeight, moonHeight);
+}
+
+// Function to update sky color based on sun position
+function updateSkyColor(sunHeight, moonHeight) {
+    let skyColor = new THREE.Color();
+    
+    // Day sky (blue)
+    const dayColor = new THREE.Color(0x87CEEB);
+    
+    // Sunset/sunrise sky (orange)
+    const sunsetColor = new THREE.Color(0xFF7F50);
+    
+    // Night sky (dark blue)
+    const nightColor = new THREE.Color(0x0A1020);
+    
+    if (sunHeight > 0.2) {
+        // Daytime
+        skyColor.copy(dayColor);
+    } else if (sunHeight > -0.2) {
+        // Sunset/sunrise - blend between day and sunset colors
+        const t = (sunHeight + 0.2) / 0.4;
+        skyColor.lerpColors(sunsetColor, dayColor, t);
+    } else if (sunHeight > -0.4) {
+        // Dusk/dawn - blend between night and sunset colors
+        const t = (sunHeight + 0.4) / 0.2;
+        skyColor.lerpColors(nightColor, sunsetColor, t);
+    } else {
+        // Night - adjust based on moon height for subtle lighting changes
+        skyColor.copy(nightColor);
+        
+        // If moon is high, add a slight blue tint
+        if (moonHeight > 0) {
+            const moonFactor = Math.min(0.3, moonHeight * 0.5);
+            skyColor.lerp(new THREE.Color(0x3A4A6A), moonFactor);
+        }
+    }
+    
+    // Apply sky color
+    skySphere.material.color.copy(skyColor);
+    
+    // Adjust fog and ambient light to match sky color
+    scene.fog.color.copy(skyColor);
+    
+    // Adjust ambient light to be dimmer at night
+    if (sunHeight > 0) {
+        // Day - brighter ambient light
+        skyLight.intensity = 0.5 + sunHeight * 0.3;
+        skyLight.color.set(0x8899aa);
+    } else {
+        // Night - dimmer and bluer ambient light
+        skyLight.intensity = 0.2 + moonHeight * 0.1;
+        skyLight.color.set(0x334455);
+    }
+}
+
+// Function to update street lamps based on time
+function updateLamps(sunHeight, moonHeight) {
+    // Turn lamps on when it's dark enough
+    const isDark = sunHeight < 0.1;
+    
+    for (const lamp of roadLampObjects) {
+        if (!lamp.userData || !lamp.userData.state) continue;
+        
+        const lampState = lamp.userData.state;
+        const light = lamp.userData.light;
+        
+        if (!light) continue;
+        
+        // Handle lamp based on state and time
+        if (lampState === 'working') {
+            // Working lamps turn on when dark
+            light.intensity = isDark ? 2.0 : 0;
+            
+            // Add optional subtle glow effect to working lamps
+            updateLampGlow(lamp, isDark, sunHeight);
+        } 
+        else if (lampState === 'damaged') {
+            // Damaged lamps have flickering light only when dark
+            if (isDark) {
+                // Keep existing flicker animation
+            } else {
+                // Force off during the day
+                light.intensity = 0;
+            }
+        } 
+        else {
+            // Broken lamps always off
+            light.intensity = 0;
+        }
+    }
+}
+
+// Function to update lamp glow effect
+function updateLampGlow(lamp, isDark, sunHeight) {
+    // Find the existing glow mesh if any
+    let glow = lamp.userData.glowMesh;
+    
+    if (isDark) {
+        // Create or show glow effect
+        if (!glow) {
+            // Create a sphere slightly larger than the lamp glass
+            const glowGeometry = new THREE.SphereGeometry(0.3, 16, 16);
+            const glowMaterial = new THREE.MeshBasicMaterial({
+                color: 0xffffcc,
+                transparent: true,
+                opacity: 0.3,
+                side: THREE.BackSide
+            });
+            
+            glow = new THREE.Mesh(glowGeometry, glowMaterial);
+            
+            // Position at the lamp head
+            const glass = lamp.children[3]; // Assuming glass is the 4th child
+            if (glass) {
+                // Position glow at the glass position
+                glow.position.copy(glass.position);
+            } else {
+                // Fallback position
+                glow.position.y = 3.8;
+                glow.position.z = 1.3;
+            }
+            
+            lamp.add(glow);
+            lamp.userData.glowMesh = glow;
+        } else {
+            glow.visible = true;
+            
+            // Adjust glow intensity based on how dark it is
+            const darknessFactor = Math.min(1, Math.max(0, -sunHeight * 2));
+            glow.material.opacity = 0.2 + darknessFactor * 0.1;
+        }
+    } else if (glow) {
+        // Hide glow during the day
+        glow.visible = false;
+    }
+}
+
 function createRockFormations(targetScene = scene) {
     // Fixed positions for rock formations - away from the road
     const rockPositions = [
@@ -3848,6 +4209,10 @@ function createRockFormation(x, z, targetScene = scene) {
             Math.random() * Math.PI,
             Math.random() * Math.PI
         );
+
+        // Add shadow casting to rocks
+        rock.castShadow = true;
+        rock.receiveShadow = true;
         
         rockGroup.add(rock);
     }
@@ -3876,7 +4241,6 @@ function createRockFormation(x, z, targetScene = scene) {
     
     return rockGroup;
 }
-
 // Function to create dead trees at fixed positions
 function createDeadTrees(targetScene = scene) {
     // Fixed positions for dead trees - away from the road
@@ -3920,6 +4284,10 @@ function createDeadTree(x, z, targetScene = scene) {
     trunk.rotation.x = (Math.random() - 0.5) * 0.2;
     trunk.rotation.z = (Math.random() - 0.5) * 0.2;
     
+    // Add shadows to trunk
+    trunk.castShadow = true;
+    trunk.receiveShadow = true;
+    
     treeGroup.add(trunk);
     
     // Add 2-4 main branches
@@ -3951,6 +4319,10 @@ function createDeadTree(x, z, targetScene = scene) {
         // Move branch outward from center
         branch.position.x = Math.cos(angle) * (trunkRadius * 0.8);
         branch.position.z = Math.sin(angle) * (trunkRadius * 0.8);
+        
+        // Add shadows to branches
+        branch.castShadow = true;
+        branch.receiveShadow = true;
         
         treeGroup.add(branch);
     }
@@ -5673,6 +6045,9 @@ function startNextRound() {
         return;
     }
     
+    // Update day-night cycle for the new round
+    updateDayNightCycle(currentRound);
+    
     // Update round display
     document.getElementById('roundDisplay').textContent = `Round ${currentRound}/${totalRounds}`;
     
@@ -6323,6 +6698,10 @@ function spawnEnemy(enemyType) {
     enemy.position.x = Math.cos(angle) * spawnRadius;
     enemy.position.z = Math.sin(angle) * spawnRadius;
     enemy.position.y = config.size.height / 2;
+    
+    // Add shadow properties
+    enemy.castShadow = true;
+    enemy.receiveShadow = true;
     
     // Add enemy metadata
     enemy.userData = {
@@ -8920,6 +9299,11 @@ function createMainBuilding(parent) {
     
     const building = new THREE.Mesh(buildingGeometry, buildingMaterial);
     building.position.set(-8, buildingHeight/2, 0); // Positioned beside the road
+    
+    // Add shadows to building
+    building.castShadow = true;
+    building.receiveShadow = true;
+    
     parent.add(building);
     
     // Store collision data
@@ -9009,7 +9393,7 @@ function createBrokenGlass(parent, position) {
             Math.random() * Math.PI,
             Math.random() * Math.PI
         );
-        
+
         parent.add(shard);
     }
 }
@@ -9061,7 +9445,7 @@ function createStationSign(building, width, height, depth) {
         metalness: 0.5,
         emissive: 0x111100
     });
-    
+
     // Create simple text using boxes
     createLetterG(sign, textMaterial);
     createLetterA(sign, textMaterial);
@@ -9115,7 +9499,7 @@ function createLetterG(parent, material) {
     );
     h3.position.set(width/4, 0, 0.3);
     group.add(h3);
-    
+
     // Position the letter
     group.position.set(-1.2, 0, 0);
     parent.add(group);
@@ -9255,6 +9639,11 @@ function createGasPump() {
     });
     const base = new THREE.Mesh(baseGeometry, baseMaterial);
     base.position.y = 0.2;
+    
+    // Add shadows to base
+    base.castShadow = true;
+    base.receiveShadow = true;
+    
     pumpGroup.add(base);
     
     // Pump body
@@ -9266,6 +9655,11 @@ function createGasPump() {
     });
     const body = new THREE.Mesh(bodyGeometry, bodyMaterial);
     body.position.y = 1.3;
+    
+    // Add shadows to body
+    body.castShadow = true;
+    body.receiveShadow = true;
+    
     pumpGroup.add(body);
     
     // Pump display (broken)
@@ -9279,6 +9673,11 @@ function createGasPump() {
     display.position.y = 1.7;
     display.position.z = 0.45;
     display.rotation.x = Math.PI * 0.1; // Tilted slightly
+    
+    // Add shadows to display
+    display.castShadow = true;
+    display.receiveShadow = true;
+    
     pumpGroup.add(display);
     
     // Pump handle
@@ -9292,12 +9691,22 @@ function createGasPump() {
     });
     const handleBase = new THREE.Mesh(handleBaseGeometry, handleMaterial);
     handleBase.rotation.x = Math.PI / 2;
+    
+    // Add shadows to handle base
+    handleBase.castShadow = true;
+    handleBase.receiveShadow = true;
+    
     handleGroup.add(handleBase);
     
     const nozzleGeometry = new THREE.CylinderGeometry(0.05, 0.08, 0.4, 8);
     const nozzle = new THREE.Mesh(nozzleGeometry, handleMaterial);
     nozzle.position.z = 0.3;
     nozzle.rotation.x = Math.PI / 2;
+    
+    // Add shadows to nozzle
+    nozzle.castShadow = true;
+    nozzle.receiveShadow = true;
+    
     handleGroup.add(nozzle);
     
     // Position the handle hanging off
@@ -9319,6 +9728,11 @@ function createGasPump() {
         metalness: 0.1
     });
     const hose = new THREE.Mesh(hoseGeometry, hoseMaterial);
+    
+    // Add shadows to hose
+    hose.castShadow = true;
+    hose.receiveShadow = true;
+    
     pumpGroup.add(hose);
     
     // Add damage details - rusty spots
@@ -9345,6 +9759,10 @@ function createCanopy(parent) {
     
     const canopy = new THREE.Mesh(canopyGeometry, canopyMaterial);
     
+    // Add shadows to canopy
+    canopy.castShadow = true;
+    canopy.receiveShadow = true;
+    
     // FIXED POSITION: Move to side where pumps are located
     // Position the canopy directly over the pumps (-4,0,-1) was the center of pump row
     canopy.position.set(6, canopyHeight, -1);
@@ -9369,6 +9787,11 @@ function createCanopy(parent) {
     columnPositions.forEach(pos => {
         const column = new THREE.Mesh(columnGeometry, columnMaterial);
         column.position.set(pos[0], canopyHeight/2, pos[1]);
+        
+        // Add shadows to columns
+        column.castShadow = true;
+        column.receiveShadow = true;
+        
         canopy.add(column);
     });
     
@@ -9540,6 +9963,11 @@ function createTire() {
         metalness: 0.1
     });
     const tire = new THREE.Mesh(tireGeometry, tireMaterial);
+    
+    // Add shadows to tire
+    tire.castShadow = true;
+    tire.receiveShadow = true;
+    
     tireGroup.add(tire);
     
     // Tire inner rim
@@ -9551,6 +9979,11 @@ function createTire() {
     });
     const rim = new THREE.Mesh(rimGeometry, rimMaterial);
     rim.rotation.x = Math.PI/2;
+    
+    // Add shadows to rim
+    rim.castShadow = true;
+    rim.receiveShadow = true;
+    
     tireGroup.add(rim);
     
     return tireGroup;
@@ -9574,6 +10007,11 @@ function createOilBarrel() {
     });
     
     const barrel = new THREE.Mesh(barrelGeometry, barrelMaterial);
+    
+    // Add shadows to barrel
+    barrel.castShadow = true;
+    barrel.receiveShadow = true;
+    
     barrelGroup.add(barrel);
     
     // Add rusty spots and damage
@@ -9591,12 +10029,22 @@ function createOilBarrel() {
     const topRidge = new THREE.Mesh(ridgeGeometry, ridgeMaterial);
     topRidge.position.y = 0.7;
     topRidge.rotation.x = Math.PI/2;
+    
+    // Add shadows to top ridge
+    topRidge.castShadow = true;
+    topRidge.receiveShadow = true;
+    
     barrelGroup.add(topRidge);
     
     // Bottom ridge
     const bottomRidge = new THREE.Mesh(ridgeGeometry, ridgeMaterial);
     bottomRidge.position.y = -0.7;
     bottomRidge.rotation.x = Math.PI/2;
+    
+    // Add shadows to bottom ridge
+    bottomRidge.castShadow = true;
+    bottomRidge.receiveShadow = true;
+    
     barrelGroup.add(bottomRidge);
     
     return barrelGroup;
@@ -9615,6 +10063,11 @@ function createFallenSign() {
     });
     
     const sign = new THREE.Mesh(signGeometry, signMaterial);
+    
+    // Add shadows to sign
+    sign.castShadow = true;
+    sign.receiveShadow = true;
+    
     signGroup.add(sign);
     
     // Add price panels
@@ -9628,6 +10081,9 @@ function createFallenSign() {
     for (let i = 0; i < 2; i++) {
         const panel = new THREE.Mesh(panelGeometry, panelMaterial);
         panel.position.set(-0.9 + i * 1.8, 0.5, 0.11);
+        
+        // Don't add shadows to emissive panels
+        
         signGroup.add(panel);
         
         // Add price in red

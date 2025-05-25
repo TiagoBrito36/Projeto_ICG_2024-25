@@ -607,3 +607,29 @@ canvas {
 .empty-shop-message {
     display: none; /* Hide this since we now have items */
 }
+
+.logo-container {
+    display: flex;
+    justify-content: center;
+    margin-bottom: 40px; /* Increased from 30px to provide more space below the larger logo */
+}
+
+.game-logo {
+    max-width: 250px; /* Increased from 250px */
+    height: auto;
+    filter: drop-shadow(0 0 10px rgba(255, 255, 255, 0.5));
+}
+
+.shop-section-heading {
+    color: #ffcc00;
+    margin-top: 15px;
+    margin-bottom: 10px;
+    padding-bottom: 5px;
+    border-bottom: 1px solid #666;
+    width: 100%;
+    text-align: left;
+}
+
+.weapon-shop-item {
+    border-left: 3px solid #ff6600;
+}
