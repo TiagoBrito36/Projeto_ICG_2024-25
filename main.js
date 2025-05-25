@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 
 // Scene setup
 const scene = new THREE.Scene();
@@ -69,6 +70,7 @@ let isGameOver = false;
 let roundCountdown = 10;
 let betweenRoundTime = 15;
 let countdownInterval;
+let abandonedCars = [];
 
 // Statistics tracking
 const gameStats = {
@@ -576,6 +578,49 @@ const roundConfigs = [
 // Add these variables with your other global variables
 let infiniteHealthCheat = false;
 let originalHealthColor = null;
+
+// Add this function to load and place the abandoned car model
+function loadAbandonedCarModel(x = 20, z = 4, rotationY = Math.PI, targetScene = scene) {
+    const loader = new GLTFLoader();
+    
+    // Load the abandoned car model
+    loader.load(
+        'assets/models/abandoned_car/scene.gltf',
+        function(gltf) {
+            const car = gltf.scene;
+            
+            // Scale the car appropriately
+            car.scale.set(0.00675, 0.00675, 0.00675); // Adjust scale as needed
+            
+            // Position the car
+            car.position.set(x, 0, z);
+            car.rotation.y = rotationY;
+            
+            // Add collision data
+            car.userData = {
+                collisionWidth: 4,  // Width for collision detection
+                collisionDepth: 8,  // Length for collision detection
+                collisionRadius: 4  // Simple radius for simpler calculations
+            };
+            
+            // Add to appropriate scene
+            targetScene.add(car);
+            
+            // Add to tracking array only if it's the game scene
+            if (targetScene === scene) {
+                abandonedCars.push(car);
+            }
+        },
+        function(xhr) {
+            // Progress callback
+            console.log((xhr.loaded / xhr.total * 100) + '% loaded');
+        },
+        function(error) {
+            // Error callback
+            console.error('An error happened loading the car model:', error);
+        }
+    );
+}
 
 // Update the initializeInventory function
 function initializeInventory() {
@@ -1706,7 +1751,7 @@ function updatePlayer() {
         const moveTime = Date.now() * 0.003;
         const swayX = Math.sin(moveTime) * 0.004;
         const swayY = Math.cos(moveTime * 0.7) * 0.004;
-        
+        visualizeCollisionAreas
         knifeModel.position.x = THREE.MathUtils.lerp(knifeModel.position.x, 0.35 + swayX, 0.1);
         knifeModel.position.y = THREE.MathUtils.lerp(knifeModel.position.y, -0.35 + swayY, 0.1);
     } else if (knifeModel) {
@@ -1743,7 +1788,6 @@ function updateWeaponSway(isMoving) {
     }
 }
 
-// Add collision detection function
 function checkCollisions(x, z) {
     const playerRadius = 0.5; // Half of player width
     
@@ -1770,19 +1814,134 @@ function checkCollisions(x, z) {
         }
     }
     
-    // NEW: Check collisions with road blockades (as solid areas)
-    const roadEndX = 110; // Same as in addRoadBlockades
+    // Check collisions with abandoned cars
+    for (const car of abandonedCars) {
+        if (!car || !car.userData)
+            continue;
+        
+        // Create vectors for position calculations
+        const playerPos = new THREE.Vector3(x, player.position.y, z);
+        const carPos = car.position.clone();
+        
+        // Get car dimensions from userData
+        const carWidth = car.userData.collisionWidth;
+        const carDepth = car.userData.collisionDepth;
+        
+        if (!carWidth || !carDepth)
+            continue;
+        
+        // Vector from car to player
+        const toPlayer = new THREE.Vector3().subVectors(playerPos, carPos);
+        
+        // Create transformation matrix from car's rotation
+        const rotationMatrix = new THREE.Matrix4().makeRotationY(-car.rotation.y);
+        
+        // Transform the toPlayer vector to car's local space
+        toPlayer.applyMatrix4(rotationMatrix);
+        
+        // Now check AABB collision in car's local space
+        const halfWidth = carWidth / 2;
+        const halfDepth = carDepth / 2;
+        
+        // Check if collision occurs
+        const isColliding = (
+            Math.abs(toPlayer.x) < halfWidth + playerRadius &&
+            Math.abs(toPlayer.z) < halfDepth + playerRadius
+        );
+        
+        if (isColliding) {
+            return true;
+        }
+    }
+    
+    // Check collisions with gas station elements
+    const gasStations = scene.children.filter(obj => obj.userData && obj.userData.isGasStation);
+    for (const station of gasStations) {
+        if (!station.userData.collisionElements) continue;
+        
+        for (const element of station.userData.collisionElements) {
+            // Get world position of collision element
+            const worldPos = new THREE.Vector3();
+            if (element.mesh) {
+                element.mesh.getWorldPosition(worldPos);
+            } else if (element.position) {
+                worldPos.copy(element.position);
+                worldPos.applyMatrix4(station.matrixWorld);
+            } else {
+                continue; // Skip if no position info
+            }
+            
+            let collision = false;
+            
+            if (element.type === 'box') {
+                // Box collision
+                const dx = Math.abs(worldPos.x - x);
+                const dz = Math.abs(worldPos.z - z);
+                
+                // Apply rotation if needed
+                const stationAngle = station.rotation.y;
+                const rotatedWidth = Math.abs(element.width * Math.cos(stationAngle)) + 
+                                    Math.abs(element.depth * Math.sin(stationAngle));
+                const rotatedDepth = Math.abs(element.width * Math.sin(stationAngle)) + 
+                                    Math.abs(element.depth * Math.cos(stationAngle));
+                
+                collision = (
+                    dx < rotatedWidth/2 + playerRadius &&
+                    dz < rotatedDepth/2 + playerRadius
+                );
+            } 
+            else if (element.type === 'cylinder') {
+                // Cylinder collision (simplified as circle in XZ plane)
+                const dx = worldPos.x - x;
+                const dz = worldPos.z - z;
+                const distance = Math.sqrt(dx*dx + dz*dz);
+                
+                collision = distance < element.radius + playerRadius;
+            }
+            
+            if (collision) {
+                return true;
+            }
+        }
+    }
+    
+    // Check collisions with road blockades (as solid areas)
+    const roadEndX = 110;
     const roadWidth = 15;
     const blockadeDepth = 12; // How "deep" the blockade area is
     
     // East blockade area (positive X)
     if (Math.abs(x - roadEndX) < blockadeDepth && Math.abs(z) < roadWidth / 2 + 5) {
-        return true; // Collision with east blockade area
+        return true;
     }
     
     // West blockade area (negative X)
     if (Math.abs(x + roadEndX) < blockadeDepth && Math.abs(z) < roadWidth / 2 + 5) {
-        return true; // Collision with west blockade area
+        return true;
+    }
+    
+    // NEW: Check collisions with environmental objects (rock formations and trees)
+    if (scene.userData.environmentalColliders) {
+        for (const collider of scene.userData.environmentalColliders) {
+            if (collider.type === 'circle') {
+                const dx = collider.position.x - x;
+                const dz = collider.position.z - z;
+                const distance = Math.sqrt(dx * dx + dz * dz);
+                
+                if (distance < (collider.radius + playerRadius)) {
+                    return true; // Collision detected
+                }
+            } 
+            else if (collider.type === 'cylinder') {
+                const dx = collider.position.x - x;
+                const dz = collider.position.z - z;
+                const distance = Math.sqrt(dx * dx + dz * dz);
+                
+                if (distance < (collider.radius + playerRadius)) {
+                    return true; // Collision detected
+                }
+            }
+        }
     }
     
     // No collision detected with any object
@@ -1821,6 +1980,8 @@ function startGame() {
 
     createApocalypticRoad();
     addRoadBlockades();
+    addAbandonedGasStation();
+    addEnvironmentalObjects();
 
     // Create player with normal height
     const playerGeometry = new THREE.BoxGeometry(1, NORMAL_HEIGHT, 1);
@@ -3141,6 +3302,70 @@ function createMenuScene() {
 
     // Create mountains
     createMountainsForMenu();
+    
+    // Add abandoned cars to menu scene with different positions than the game scene
+    addMenuAbandonedCars();
+    
+    // Add gas station to menu scene
+    addMenuGasStation();
+    
+    // Add rock formations and dead trees to menu scene
+    addEnvironmentalObjectsToMenu();
+}
+
+// New function to add environmental objects to menu scene
+function addEnvironmentalObjectsToMenu() {
+    // Add rock formations
+    createRockFormations(menuScene);
+    
+    // Add dead trees
+    createDeadTrees(menuScene);
+}
+
+// Function to add abandoned cars specific to the menu scene
+function addMenuAbandonedCars() {
+    // Load abandoned car models with specific positions for the menu scene
+    loadAbandonedCarModel(15, -3, Math.PI * 0.8, menuScene);
+    loadAbandonedCarModel(-25, 2, Math.PI * 0.3, menuScene);
+    loadAbandonedCarModel(40, 5, Math.PI * 1.5, menuScene);
+    loadAbandonedCarModel(-60, -4, Math.PI * 0.7, menuScene);
+}
+
+// Function to add gas station to menu scene
+function addMenuGasStation() {
+    // Create a group to hold all gas station elements
+    const gasStationGroup = new THREE.Group();
+    gasStationGroup.userData.isGasStation = true;
+    
+    // Position in the menu scene - MATCH the game scene position and rotation
+    gasStationGroup.position.set(-15, 0, 20); // Same as game scene
+    gasStationGroup.rotation.y = Math.PI; // Same as game scene
+
+    // Initialize collision elements array
+    gasStationGroup.userData.collisionElements = [];
+    
+    // Add the road surface beneath the gas station
+    addGasStationRoadArea(gasStationGroup);
+
+    // 1. Main building
+    createMainBuilding(gasStationGroup);
+    
+    // 2. Gas pumps
+    createGasPumps(gasStationGroup);
+    
+    // 3. Canopy (roof over pumps)
+    createCanopy(gasStationGroup);
+    
+    // 4. Add debris and details
+    addDebrisAndDetails(gasStationGroup);
+    
+    // 5. Add some lighting effects (broken flickering light)
+    addBrokenLighting(gasStationGroup);
+    
+    // Add to menu scene
+    menuScene.add(gasStationGroup);
+    
+    return gasStationGroup;
 }
 
 // Function to add road lamps along the apocalyptic road
@@ -3543,6 +3768,214 @@ function animateDamagedLamp(lampGroup) {
     
     // Start the flicker animation
     updateFlicker();
+}
+
+// Function to add rock formations and dead trees around the map
+function addEnvironmentalObjects() {
+    // Add rock formations
+    createRockFormations();
+    
+    // Add dead trees
+    createDeadTrees();
+}
+
+function createRockFormations(targetScene = scene) {
+    // Fixed positions for rock formations - away from the road
+    const rockPositions = [
+        {x: -80, z: -50},  // Northwest area
+        {x: -60, z: 70},   // Northeast area
+        {x: 70, z: 60},    // Southeast area
+        {x: 90, z: -30},   // Southwest area
+        {x: -40, z: -80},  // Far north
+        {x: 50, z: -70},   // Far south
+        {x: -90, z: 20},   // Far west
+        {x: 80, z: 10},    // Far east
+        {x: -20, z: 90},   // Northern edge
+        {x: 30, z: -90}    // Southern edge
+    ];
+    
+    rockPositions.forEach((pos) => {
+        createRockFormation(pos.x, pos.z, targetScene);
+    });
+}
+
+// Function to create rock formations at fixed positions
+function createRockFormation(x, z, targetScene = scene) {
+    // Create a group for the rock formation
+    const rockGroup = new THREE.Group();
+    
+    // Create 3-7 rocks of varying sizes for each formation
+    const rockCount = 3 + Math.floor(Math.random() * 5);
+    
+    for (let i = 0; i < rockCount; i++) {
+        // Randomize rock appearance
+        const rockType = Math.floor(Math.random() * 3);
+        let rockGeometry;
+        
+        switch(rockType) {
+            case 0:
+                rockGeometry = new THREE.DodecahedronGeometry(1 + Math.random() * 0.5, 1);
+                break;
+            case 1:
+                rockGeometry = new THREE.OctahedronGeometry(0.8 + Math.random() * 0.6, 1);
+                break;
+            case 2:
+                rockGeometry = new THREE.TetrahedronGeometry(0.9 + Math.random() * 0.7, 1);
+                break;
+        }
+        
+        // Random gray color
+        const grayShade = 0.3 + Math.random() * 0.3;
+        const rockMaterial = new THREE.MeshStandardMaterial({
+            color: new THREE.Color(grayShade, grayShade, grayShade),
+            roughness: 0.8 + Math.random() * 0.2,
+            metalness: 0.1
+        });
+        
+        const rock = new THREE.Mesh(rockGeometry, rockMaterial);
+        
+        // Position rocks within the formation
+        const offsetX = (Math.random() - 0.5) * 4;
+        const offsetZ = (Math.random() - 0.5) * 4;
+        const scale = 0.8 + Math.random() * 1.2;
+        
+        rock.position.set(offsetX, scale * 0.5, offsetZ);
+        rock.scale.set(scale, scale, scale);
+        
+        // Random rotation for natural look
+        rock.rotation.set(
+            Math.random() * Math.PI,
+            Math.random() * Math.PI,
+            Math.random() * Math.PI
+        );
+        
+        rockGroup.add(rock);
+    }
+    
+    // Position the entire rock formation
+    rockGroup.position.set(x, 0, z);
+    
+    // Add to target scene
+    targetScene.add(rockGroup);
+    
+    // Add collision data only for the game scene, not the menu scene
+    if (targetScene === scene) {
+        // Add collision data to avoid enemies and player walking through rocks
+        // Create a single collision area for the whole formation
+        const collisionRadius = 5; // Radius for collision detection
+        if (!scene.userData.environmentalColliders) {
+            scene.userData.environmentalColliders = [];
+        }
+        
+        scene.userData.environmentalColliders.push({
+            type: 'circle',
+            position: new THREE.Vector3(x, 0, z),
+            radius: collisionRadius
+        });
+    }
+    
+    return rockGroup;
+}
+
+// Function to create dead trees at fixed positions
+function createDeadTrees(targetScene = scene) {
+    // Fixed positions for dead trees - away from the road
+    const treePositions = [
+        {x: -70, z: -20},  // Northwest area
+        {x: -50, z: 50},   // Northeast area
+        {x: 60, z: 40},    // Southeast area
+        {x: 70, z: -50},   // Southwest area
+        {x: -30, z: -70},  // Far north
+        {x: 40, z: -80},   // Far south
+        {x: -80, z: 40},   // Far west
+        {x: 90, z: 30},    // Far east
+        {x: -40, z: 80},   // Northern edge
+        {x: 20, z: -90}    // Southern edge
+    ];
+    
+    treePositions.forEach((pos) => {
+        createDeadTree(pos.x, pos.z, targetScene);
+    });
+}
+
+// Function to create a single dead tree
+function createDeadTree(x, z, targetScene = scene) {
+    // Create tree group
+    const treeGroup = new THREE.Group();
+    
+    // Create trunk
+    const trunkHeight = 5 + Math.random() * 3;
+    const trunkRadius = 0.4 + Math.random() * 0.3;
+    const trunkGeometry = new THREE.CylinderGeometry(trunkRadius * 0.7, trunkRadius, trunkHeight, 8);
+    const trunkMaterial = new THREE.MeshStandardMaterial({
+        color: 0x3d2817, // Dark brown
+        roughness: 0.9,
+        metalness: 0.1
+    });
+    
+    const trunk = new THREE.Mesh(trunkGeometry, trunkMaterial);
+    trunk.position.y = trunkHeight / 2;
+    
+    // Add slight lean to the trunk for a dead tree look
+    trunk.rotation.x = (Math.random() - 0.5) * 0.2;
+    trunk.rotation.z = (Math.random() - 0.5) * 0.2;
+    
+    treeGroup.add(trunk);
+    
+    // Add 2-4 main branches
+    const branchCount = 2 + Math.floor(Math.random() * 3);
+    
+    for (let i = 0; i < branchCount; i++) {
+        const branchHeight = trunkHeight * (0.4 + Math.random() * 0.3);
+        const branchRadius = trunkRadius * (0.5 + Math.random() * 0.3);
+        const branchGeometry = new THREE.CylinderGeometry(
+            branchRadius * 0.5, branchRadius, branchHeight, 6
+        );
+        
+        const branch = new THREE.Mesh(branchGeometry, trunkMaterial);
+        
+        // Position along the trunk
+        const branchY = trunkHeight * (0.5 + Math.random() * 0.4);
+        branch.position.y = branchY;
+        
+        // Rotate branch outward from trunk
+        const angle = (i / branchCount) * Math.PI * 2;
+        const tilt = Math.PI / 3 + Math.random() * Math.PI / 6; // ~60-90 degrees
+        
+        branch.rotation.set(
+            Math.cos(angle) * tilt,
+            0,
+            Math.sin(angle) * tilt
+        );
+        
+        // Move branch outward from center
+        branch.position.x = Math.cos(angle) * (trunkRadius * 0.8);
+        branch.position.z = Math.sin(angle) * (trunkRadius * 0.8);
+        
+        treeGroup.add(branch);
+    }
+    
+    // Position tree
+    treeGroup.position.set(x, 0, z);
+    
+    // Add to target scene
+    targetScene.add(treeGroup);
+    
+    // Add collision data only for the game scene, not the menu scene
+    if (targetScene === scene) {
+        // Add collision data
+        if (!scene.userData.environmentalColliders) {
+            scene.userData.environmentalColliders = [];
+        }
+        
+        scene.userData.environmentalColliders.push({
+            type: 'cylinder',
+            position: new THREE.Vector3(x, 0, z),
+            radius: trunkRadius * 1.5
+        });
+    }
+    
+    return treeGroup;
 }
 
 // Function to create apocalyptic road for menu scene
@@ -4620,6 +5053,12 @@ function createApocalypticRoad() {
     
     // Add road lamps along the road
     addRoadLamps(roadLength, roadWidth);
+
+    // Add abandoned car models to the road
+    loadAbandonedCarModel(20, 4, Math.PI);              // First car (original position)
+    loadAbandonedCarModel(-35, -2.5, Math.PI * 0.2);    // Second car
+    loadAbandonedCarModel(60, 5.5, Math.PI * 1.8);      // Third car
+    loadAbandonedCarModel(-80, 3, Math.PI * 0.5);       // Fourth car
 }
 
 // Function to add potholes and cracks to the road
@@ -8328,32 +8767,1187 @@ function moveEnemy(enemy, direction, speed = null) {
     const originalX = enemy.position.x;
     const originalZ = enemy.position.z;
     
-    // Apply movement
+    // Try the direct movement first
     enemy.position.x += movement.x;
     enemy.position.z += movement.z;
     
-    // Boundary check - UPDATED to match expanded map size
-    const boundary = 112.5; // Updated from 75 to match player boundary limits
+    // Boundary check
+    const boundary = 112.5;
     enemy.position.x = Math.max(-boundary, Math.min(boundary, enemy.position.x));
     enemy.position.z = Math.max(-boundary, Math.min(boundary, enemy.position.z));
     
-    // Basic collision detection with player and other enemies
+    // Check for collisions
     if (checkEnemyCollisions(enemy, originalX, originalZ)) {
+        // Collision detected, revert to original position
+        enemy.position.x = originalX;
+        enemy.position.z = originalZ;
+        
+        // Try to navigate around the obstacle with obstacle avoidance
+        applyObstacleAvoidance(enemy, direction, movement, moveSpeed);
+    }
+    
+    // Store the last successful movement direction for future obstacle avoidance
+    if (!enemy.userData.lastSuccessfulDirection) {
+        enemy.userData.lastSuccessfulDirection = direction.clone();
+    } else if (!direction.equals(enemy.userData.lastSuccessfulDirection)) {
+        enemy.userData.lastSuccessfulDirection.copy(direction);
+    }
+}
+
+// Function to add road surface beneath the gas station in createAbandonedGasStation
+function addGasStationRoadArea(parent) {
+    // Create a road surface that matches the main road but sized for the gas station
+    const stationRoadGeometry = new THREE.PlaneGeometry(40, 30); // Width, depth for the gas station area
+    const stationRoadMaterial = new THREE.MeshStandardMaterial({ 
+        color: 0x333333, // Same dark gray as the main road
+        roughness: 0.8,
+        metalness: 0.2
+    });
+    
+    const stationRoad = new THREE.Mesh(stationRoadGeometry, stationRoadMaterial);
+    stationRoad.rotation.x = -Math.PI / 2; // Lay flat like the floor
+    stationRoad.position.y = 0.06; // Slightly above ground to prevent z-fighting
+    stationRoad.position.z = 0; // Center with the gas station
+    stationRoad.position.x = 0; // Center with the gas station
+    
+    // Add cracks and details to match the main road
+    addStationRoadDetails(stationRoad);
+    
+    parent.add(stationRoad);
+    return stationRoad;
+}
+
+// Function to add details to the gas station road surface
+function addStationRoadDetails(roadSurface) {
+    // Add a few cracks
+    for (let i = 0; i < 4; i++) {
+        const crackLength = 1 + Math.random() * 3;
+        const crackWidth = 0.1 + Math.random() * 0.1;
+        
+        const crackGeometry = new THREE.BoxGeometry(crackLength, 0.02, crackWidth);
+        const crackMaterial = new THREE.MeshBasicMaterial({
+            color: 0x111111,
+            transparent: false
+        });
+        
+        const crack = new THREE.Mesh(crackGeometry, crackMaterial);
+        
+        // Position and rotation on the surface
+        crack.position.set(
+            (Math.random() - 0.5) * 15,
+            0.01, // Just above the road surface
+            (Math.random() - 0.5) * 25
+        );
+        crack.rotation.y = Math.random() * Math.PI;
+        
+        roadSurface.add(crack);
+    }
+    
+    // Add oil stains
+    for (let i = 0; i < 3; i++) {
+        const stainRadius = 0.5 + Math.random() * 1;
+        const stainGeometry = new THREE.CircleGeometry(stainRadius, 16);
+        const stainMaterial = new THREE.MeshBasicMaterial({
+            color: 0x111111,
+            transparent: true,
+            opacity: 0.4,
+            side: THREE.DoubleSide
+        });
+        
+        const stain = new THREE.Mesh(stainGeometry, stainMaterial);
+        stain.rotation.x = -Math.PI / 2; // Lay flat
+        stain.position.set(
+            (Math.random() - 0.5) * 12,
+            0.01, // Just above the road surface
+            (Math.random() - 0.5) * 20
+        );
+        
+        roadSurface.add(stain);
+    }
+}
+
+// Update the createAbandonedGasStation function to add the road surface first
+function createAbandonedGasStation() {
+    // Create a group to hold all gas station elements
+    const gasStationGroup = new THREE.Group();
+    gasStationGroup.userData.isGasStation = true;
+    
+    // Position in the middle of the road
+    gasStationGroup.position.set(-15, 0, 20); // Center of the map, can be adjusted
+    gasStationGroup.rotation.y = Math.PI; // Rotate to face the road
+
+    // Initialize collision elements array BEFORE creating components
+    gasStationGroup.userData.collisionElements = [];
+    
+    // Add the road surface beneath the gas station
+    addGasStationRoadArea(gasStationGroup);
+
+    // 1. Main building
+    createMainBuilding(gasStationGroup);
+    
+    // 2. Gas pumps
+    createGasPumps(gasStationGroup);
+    
+    // 3. Canopy (roof over pumps)
+    createCanopy(gasStationGroup);
+    
+    // 4. Add debris and destruction details
+    addDebrisAndDetails(gasStationGroup);
+    
+    // 5. Add some lighting effects (broken flickering light)
+    addBrokenLighting(gasStationGroup);
+    
+    // Add to scene
+    scene.add(gasStationGroup);
+    
+    // Return the group for any further manipulations
+    return gasStationGroup;
+}
+
+// Create the main building of the gas station
+function createMainBuilding(parent) {
+    // Main building structure
+    const buildingWidth = 12;
+    const buildingDepth = 8;
+    const buildingHeight = 4;
+    
+    const buildingGeometry = new THREE.BoxGeometry(buildingWidth, buildingHeight, buildingDepth);
+    const buildingMaterial = new THREE.MeshStandardMaterial({
+        color: 0xcccccc,
+        roughness: 0.8,
+        metalness: 0.2
+    });
+    
+    const building = new THREE.Mesh(buildingGeometry, buildingMaterial);
+    building.position.set(-8, buildingHeight/2, 0); // Positioned beside the road
+    parent.add(building);
+    
+    // Store collision data
+    parent.userData.collisionElements.push({
+        type: 'box',
+        width: buildingWidth,
+        height: buildingHeight,
+        depth: buildingDepth,
+        position: building.position.clone(),
+        mesh: building
+    });
+    
+    // Add broken windows
+    createBrokenWindows(building, buildingWidth, buildingHeight, buildingDepth);
+    
+    // Add door
+    createDoor(building, buildingWidth, buildingHeight, buildingDepth);
+    
+    // Add sign on top
+    createStationSign(building, buildingWidth, buildingHeight, buildingDepth);
+    
+    return building;
+}
+
+// Create broken windows for the building
+function createBrokenWindows(building, width, height, depth) {
+    // Front windows (broken)
+    const windowMaterial = new THREE.MeshStandardMaterial({
+        color: 0x444444,
+        roughness: 0.1,
+        metalness: 0.8,
+        transparent: true,
+        opacity: 0.5
+    });
+    
+    // Create several broken window frames
+    for (let i = 0; i < 3; i++) {
+        const windowWidth = 1.5;
+        const windowHeight = 1.2;
+        const windowGeometry = new THREE.PlaneGeometry(windowWidth, windowHeight);
+        const window = new THREE.Mesh(windowGeometry, windowMaterial);
+        
+        // Position along front face with spacing
+        window.position.set(
+            0,
+            0,
+            depth/2 + 0.01 // Slightly in front of the wall
+        );
+        
+        // Vary the x-position for each window
+        window.position.x = -width/2 + 2 + i * 3;
+        window.position.y = 0.2;
+        
+        building.add(window);
+        
+        // Add broken glass shards
+        createBrokenGlass(building, window.position.clone());
+    }
+}
+
+// Create shattered glass pieces
+function createBrokenGlass(parent, position) {
+    const shardCount = 5 + Math.floor(Math.random() * 5);
+    
+    for (let i = 0; i < shardCount; i++) {
+        // Create triangular or irregular glass shards
+        const shardGeometry = new THREE.ConeGeometry(0.2, 0.4, 3);
+        const shardMaterial = new THREE.MeshStandardMaterial({
+            color: 0xaaddff,
+            transparent: true,
+            opacity: 0.3,
+            roughness: 0.1,
+            metalness: 0.9
+        });
+        
+        const shard = new THREE.Mesh(shardGeometry, shardMaterial);
+        
+        // Position around the window
+        shard.position.copy(position);
+        shard.position.y -= 1.5 + Math.random() * 0.5; // On the ground
+        shard.position.x += (Math.random() - 0.5) * 1.5;
+        shard.position.z += 0.5 + Math.random() * 0.5; // In front of the window
+        
+        // Random rotation
+        shard.rotation.set(
+            Math.random() * Math.PI,
+            Math.random() * Math.PI,
+            Math.random() * Math.PI
+        );
+        
+        parent.add(shard);
+    }
+}
+
+// Create door for the building
+function createDoor(building, width, height, depth) {
+    const doorWidth = 1.8;
+    const doorHeight = 2.2;
+    
+    // Door frame
+    const doorFrameGeometry = new THREE.BoxGeometry(doorWidth + 0.2, doorHeight + 0.2, 0.2);
+    const doorFrameMaterial = new THREE.MeshStandardMaterial({ color: 0x444444 });
+    const doorFrame = new THREE.Mesh(doorFrameGeometry, doorFrameMaterial);
+    doorFrame.position.set(width/2 - 3, -height/2 + doorHeight/2, depth/2 + 0.01);
+    building.add(doorFrame);
+    
+    // Door (hanging off hinges)
+    const doorGeometry = new THREE.BoxGeometry(doorWidth, doorHeight, 0.1);
+    const doorMaterial = new THREE.MeshStandardMaterial({ color: 0x333333 });
+    const door = new THREE.Mesh(doorGeometry, doorMaterial);
+    door.position.set(0, 0, 0.1);
+    // Rotate door to look broken/open
+    door.rotation.y = Math.PI / 4;
+    door.rotation.x = Math.PI / 60;
+    doorFrame.add(door);
+}
+
+// Create gas station sign on top of the building
+function createStationSign(building, width, height, depth) {
+    const signWidth = width * 0.8;
+    const signHeight = 2;
+    const signDepth = 0.5;
+    
+    // Sign base
+    const signGeometry = new THREE.BoxGeometry(signWidth, signHeight, signDepth);
+    const signMaterial = new THREE.MeshStandardMaterial({ 
+        color: 0x990000,  // Faded red
+        roughness: 0.7
+    });
+    
+    const sign = new THREE.Mesh(signGeometry, signMaterial);
+    sign.position.set(0, height/2 + signHeight/2 + 0.1, 0);
+    building.add(sign);
+    
+    // Add text "GAS" to the sign
+    const textMaterial = new THREE.MeshStandardMaterial({ 
+        color: 0xffffdd, 
+        roughness: 0.4,
+        metalness: 0.5,
+        emissive: 0x111100
+    });
+    
+    // Create simple text using boxes
+    createLetterG(sign, textMaterial);
+    createLetterA(sign, textMaterial);
+    createLetterS(sign, textMaterial);
+}
+
+// Helper functions to create letters for the sign
+function createLetterG(parent, material) {
+    const thickness = 0.15;
+    const width = 0.8;
+    const height = 1;
+    
+    const group = new THREE.Group();
+    
+    // Vertical line
+    const v1 = new THREE.Mesh(
+        new THREE.BoxGeometry(thickness, height, thickness),
+        material
+    );
+    v1.position.set(-width/2, 0, 0.3);
+    group.add(v1);
+    
+    // Top horizontal
+    const h1 = new THREE.Mesh(
+        new THREE.BoxGeometry(width, thickness, thickness),
+        material
+    );
+    h1.position.set(0, height/2, 0.3);
+    group.add(h1);
+    
+    // Bottom horizontal
+    const h2 = new THREE.Mesh(
+        new THREE.BoxGeometry(width, thickness, thickness),
+        material
+    );
+    h2.position.set(0, -height/2, 0.3);
+    group.add(h2);
+    
+    // Right vertical (partial)
+    const v2 = new THREE.Mesh(
+        new THREE.BoxGeometry(thickness, height/2, thickness),
+        material
+    );
+    v2.position.set(width/2, -height/4, 0.3);
+    group.add(v2);
+    
+    // Middle horizontal (partial)
+    const h3 = new THREE.Mesh(
+        new THREE.BoxGeometry(width/2, thickness, thickness),
+        material
+    );
+    h3.position.set(width/4, 0, 0.3);
+    group.add(h3);
+    
+    // Position the letter
+    group.position.set(-1.2, 0, 0);
+    parent.add(group);
+}
+
+function createLetterA(parent, material) {
+    const thickness = 0.15;
+    const width = 0.8;
+    const height = 1;
+    
+    const group = new THREE.Group();
+    
+    // Left diagonal
+    const d1 = new THREE.Mesh(
+        new THREE.BoxGeometry(thickness, height*1.2, thickness),
+        material
+    );
+    d1.position.set(-width/3, 0, 0.3);
+    d1.rotation.z = -Math.PI/8;
+    group.add(d1);
+    
+    // Right diagonal
+    const d2 = new THREE.Mesh(
+        new THREE.BoxGeometry(thickness, height*1.2, thickness),
+        material
+    );
+    d2.position.set(width/3, 0, 0.3);
+    d2.rotation.z = Math.PI/8;
+    group.add(d2);
+    
+    // Middle horizontal
+    const h1 = new THREE.Mesh(
+        new THREE.BoxGeometry(width*0.6, thickness, thickness),
+        material
+    );
+    h1.position.set(0, -height*0.1, 0.3);
+    group.add(h1);
+    
+    // Position the letter
+    group.position.set(0, 0, 0);
+    parent.add(group);
+}
+
+function createLetterS(parent, material) {
+    const thickness = 0.15;
+    const width = 0.8;
+    const height = 1;
+    
+    const group = new THREE.Group();
+    
+    // Top horizontal
+    const h1 = new THREE.Mesh(
+        new THREE.BoxGeometry(width, thickness, thickness),
+        material
+    );
+    h1.position.set(0, height/2, 0.3);
+    group.add(h1);
+    
+    // Middle horizontal
+    const h2 = new THREE.Mesh(
+        new THREE.BoxGeometry(width, thickness, thickness),
+        material
+    );
+    h2.position.set(0, 0, 0.3);
+    group.add(h2);
+    
+    // Bottom horizontal
+    const h3 = new THREE.Mesh(
+        new THREE.BoxGeometry(width, thickness, thickness),
+        material
+    );
+    h3.position.set(0, -height/2, 0.3);
+    group.add(h3);
+    
+    // Top vertical (partial)
+    const v1 = new THREE.Mesh(
+        new THREE.BoxGeometry(thickness, height/2, thickness),
+        material
+    );
+    v1.position.set(-width/2, height/4, 0.3);
+    group.add(v1);
+    
+    // Bottom vertical (partial)
+    const v2 = new THREE.Mesh(
+        new THREE.BoxGeometry(thickness, height/2, thickness),
+        material
+    );
+    v2.position.set(width/2, -height/4, 0.3);
+    group.add(v2);
+    
+    // Position the letter
+    group.position.set(1.2, 0, 0);
+    parent.add(group);
+}
+
+// Create gas pumps
+function createGasPumps(parent) {
+    // Create a row of damaged/rusty gas pumps with better spacing
+    const pumpCount = 4;
+    const pumpSpacing = 4; // Increase spacing to avoid overlap
+    
+    for (let i = 0; i < pumpCount; i++) {
+        const pumpX = 6;
+        const pumpZ = -7 + i * pumpSpacing; // Increased spacing
+        
+        const pump = createGasPump();
+        pump.position.set(pumpX, 0, pumpZ); // Ensure y=0
+        
+        // Random rotation to look damaged - reduce rotation amount
+        pump.rotation.y = Math.random() * 0.1 - 0.05;
+        pump.rotation.z = Math.random() * 0.05 - 0.025;
+        
+        parent.add(pump);
+        
+        // Add collision data for each pump
+        parent.userData.collisionElements.push({
+            type: 'box',
+            width: 1,
+            height: 2,
+            depth: 1,
+            position: new THREE.Vector3(pumpX, 1, pumpZ),
+            mesh: pump
+        });
+    }
+}
+
+// Create a single gas pump
+function createGasPump() {
+    const pumpGroup = new THREE.Group();
+    
+    // Pump base
+    const baseGeometry = new THREE.BoxGeometry(1, 0.4, 1);
+    const baseMaterial = new THREE.MeshStandardMaterial({
+        color: 0x444444,
+        roughness: 0.9,
+        metalness: 0.2
+    });
+    const base = new THREE.Mesh(baseGeometry, baseMaterial);
+    base.position.y = 0.2;
+    pumpGroup.add(base);
+    
+    // Pump body
+    const bodyGeometry = new THREE.BoxGeometry(0.8, 1.8, 0.8);
+    const bodyMaterial = new THREE.MeshStandardMaterial({
+        color: 0x882222, // Rusty red
+        roughness: 0.7,
+        metalness: 0.3
+    });
+    const body = new THREE.Mesh(bodyGeometry, bodyMaterial);
+    body.position.y = 1.3;
+    pumpGroup.add(body);
+    
+    // Pump display (broken)
+    const displayGeometry = new THREE.BoxGeometry(0.7, 0.5, 0.1);
+    const displayMaterial = new THREE.MeshStandardMaterial({
+        color: 0x222222,
+        roughness: 0.3,
+        metalness: 0.5
+    });
+    const display = new THREE.Mesh(displayGeometry, displayMaterial);
+    display.position.y = 1.7;
+    display.position.z = 0.45;
+    display.rotation.x = Math.PI * 0.1; // Tilted slightly
+    pumpGroup.add(display);
+    
+    // Pump handle
+    const handleGroup = new THREE.Group();
+    
+    const handleBaseGeometry = new THREE.CylinderGeometry(0.05, 0.05, 0.3, 8);
+    const handleMaterial = new THREE.MeshStandardMaterial({
+        color: 0x111111,
+        roughness: 0.5,
+        metalness: 0.6
+    });
+    const handleBase = new THREE.Mesh(handleBaseGeometry, handleMaterial);
+    handleBase.rotation.x = Math.PI / 2;
+    handleGroup.add(handleBase);
+    
+    const nozzleGeometry = new THREE.CylinderGeometry(0.05, 0.08, 0.4, 8);
+    const nozzle = new THREE.Mesh(nozzleGeometry, handleMaterial);
+    nozzle.position.z = 0.3;
+    nozzle.rotation.x = Math.PI / 2;
+    handleGroup.add(nozzle);
+    
+    // Position the handle hanging off
+    handleGroup.position.set(0.5, 1.2, 0.4);
+    pumpGroup.add(handleGroup);
+    
+    // Add hoses (using curved tube)
+    const curve = new THREE.CatmullRomCurve3([
+        new THREE.Vector3(0.4, 1.2, 0.4),
+        new THREE.Vector3(0.5, 1.0, 0.5),
+        new THREE.Vector3(0.4, 0.7, 0.6),
+        new THREE.Vector3(0.3, 0.4, 0.5)
+    ]);
+    
+    const hoseGeometry = new THREE.TubeGeometry(curve, 20, 0.05, 8, false);
+    const hoseMaterial = new THREE.MeshStandardMaterial({
+        color: 0x222222,
+        roughness: 0.9,
+        metalness: 0.1
+    });
+    const hose = new THREE.Mesh(hoseGeometry, hoseMaterial);
+    pumpGroup.add(hose);
+    
+    // Add damage details - rusty spots
+    addRustySpots(body);
+    
+    return pumpGroup;
+}
+
+// Update canopy positioning to align with pumps
+function createCanopy(parent) {
+    // Canopy dimensions - adjusted to properly cover the pumps
+    const canopyWidth = 10;
+    const canopyDepth = 18; // Covers all pumps
+    const canopyHeight = 5;
+    const canopyThickness = 0.3;
+    
+    // Create the main canopy roof
+    const canopyGeometry = new THREE.BoxGeometry(canopyWidth, canopyThickness, canopyDepth);
+    const canopyMaterial = new THREE.MeshStandardMaterial({
+        color: 0x777777,
+        roughness: 0.8,
+        metalness: 0.2
+    });
+    
+    const canopy = new THREE.Mesh(canopyGeometry, canopyMaterial);
+    
+    // FIXED POSITION: Move to side where pumps are located
+    // Position the canopy directly over the pumps (-4,0,-1) was the center of pump row
+    canopy.position.set(6, canopyHeight, -1);
+    canopy.rotation.z = Math.PI; // Lay flat
+    
+    // Add support columns for the canopy
+    const columnGeometry = new THREE.CylinderGeometry(0.2, 0.2, canopyHeight, 8);
+    const columnMaterial = new THREE.MeshStandardMaterial({
+        color: 0x555555,
+        roughness: 0.7,
+        metalness: 0.3
+    });
+    
+    // Add columns at the corners of the canopy
+    const columnPositions = [
+        [-canopyWidth/2 + 0.5, 0, -canopyDepth/2 + 0.5],
+        [canopyWidth/2 - 0.5, 0, -canopyDepth/2 + 0.5],
+        [-canopyWidth/2 + 0.5, 0, canopyDepth/2 - 0.5],
+        [canopyWidth/2 - 0.5, 0, canopyDepth/2 - 0.5]
+    ];
+    
+    columnPositions.forEach(pos => {
+        const column = new THREE.Mesh(columnGeometry, columnMaterial);
+        column.position.set(pos[0], canopyHeight/2, pos[1]);
+        canopy.add(column);
+    });
+    
+    // Add damage to canopy
+    addDamageToCanopy(canopy, canopyWidth, canopyDepth);
+    
+    parent.add(canopy);
+}
+
+// Add damage to canopy
+function addDamageToCanopy(canopy, width, depth) {
+    // Create holes in the canopy
+    const holeCount = 3;
+    
+    for (let i = 0; i < holeCount; i++) {
+        const holeGeometry = new THREE.CircleGeometry(0.5 + Math.random() * 0.7, 16);
+        const holeMaterial = new THREE.MeshBasicMaterial({ color: 0x000000 });
+        const hole = new THREE.Mesh(holeGeometry, holeMaterial);
+        
+        hole.position.set(
+            (Math.random() - 0.5) * width * 0.7,
+            0.16, // Just above the canopy
+            (Math.random() - 0.5) * depth * 0.7
+        );
+        
+        hole.rotation.x = -Math.PI / 2; // Face downward
+        canopy.add(hole);
+    }
+    
+    // Add bent/damaged edges
+    const edgeGeometry = new THREE.BoxGeometry(width * 0.3, 0.2, 0.3);
+    const edgeMaterial = new THREE.MeshStandardMaterial({
+        color: 0x777777,
+        roughness: 0.8,
+        metalness: 0.2
+    });
+    
+    const edge = new THREE.Mesh(edgeGeometry, edgeMaterial);
+    edge.position.set(width * 0.3, -0.1, depth/2);
+    edge.rotation.x = 0.6; // Bent downward
+    canopy.add(edge);
+}
+
+// Add rusty spots to objects
+function addRustySpots(mesh) {
+    const spotCount = 5;
+    
+    for (let i = 0; i < spotCount; i++) {
+        const spotSize = 0.1 + Math.random() * 0.2;
+        const spotGeometry = new THREE.CircleGeometry(spotSize, 8);
+        const spotMaterial = new THREE.MeshBasicMaterial({
+            color: 0x8B4513, // Rust color
+            side: THREE.DoubleSide
+        });
+        
+        const spot = new THREE.Mesh(spotGeometry, spotMaterial);
+        
+        // Random position on each face of the box
+        const face = Math.floor(Math.random() * 6);
+        let pos = new THREE.Vector3();
+        let rot = new THREE.Euler();
+        
+        switch(face) {
+            case 0: // Front
+                pos.set(0, 0, 0.41);
+                rot.set(0, 0, 0);
+                break;
+            case 1: // Back
+                pos.set(0, 0, -0.41);
+                rot.set(0, Math.PI, 0);
+                break;
+            case 2: // Left
+                pos.set(-0.41, 0, 0);
+                rot.set(0, -Math.PI/2, 0);
+                break;
+            case 3: // Right
+                pos.set(0.41, 0, 0);
+                rot.set(0, Math.PI/2, 0);
+                break;
+            case 4: // Top
+                pos.set(0, 0.41, 0);
+                rot.set(-Math.PI/2, 0, 0);
+                break;
+            case 5: // Bottom
+                pos.set(0, -0.41, 0);
+                rot.set(Math.PI/2, 0, 0);
+                break;
+        }
+        
+        // Randomize position within face
+        pos.x += (Math.random() - 0.5) * 0.6;
+        pos.y += (Math.random() - 0.5) * 0.6;
+        
+        spot.position.copy(pos);
+        spot.rotation.copy(rot);
+        
+        mesh.add(spot);
+    }
+}
+
+// Add scattered debris and details around the gas station
+function addDebrisAndDetails(parent) {
+    // 1. Add tires with fixed positions
+    const tirePositions = [
+        { x: -8, z: -5 },   // Behind the building
+        { x: -6, z: 6 },    // Side of the building
+        { x: -12, z: -1 }   // Further from building
+    ];
+    
+    tirePositions.forEach((pos, i) => {
+        const tire = createTire();
+        tire.position.set(pos.x, 0.4, pos.z);
+        
+        // Add some rotation variety, but keep positions fixed
+        tire.rotation.set(
+            Math.PI * (i * 0.3),
+            Math.PI * (i * 0.7),
+            Math.PI * (i * 0.5)
+        );
+        
+        parent.add(tire);
+    });
+    
+    // 2. Add oil barrels with fixed positions
+    const barrelPositions = [
+        { x: -12, z: -6, standing: true },    // Against the wall
+        { x: -8, z: -8, standing: false },    // Knocked over
+        { x: -10, z: 5, standing: true },     // Corner of station
+        { x: -4, z: 8, standing: false }      // Out front
+    ];
+    
+    barrelPositions.forEach((pos) => {
+        const barrel = createOilBarrel();
+        barrel.position.set(pos.x, pos.standing ? 0.75 : 0.3, pos.z);
+        
+        // Set barrel rotation based on whether it's standing or knocked over
+        if (!pos.standing) {
+            barrel.rotation.x = Math.PI/2;
+        }
+        
+        parent.add(barrel);
+        
+        // Add collision data for each barrel
+        parent.userData.collisionElements.push({
+            type: 'cylinder',
+            radius: 0.5,
+            height: 1.5,
+            position: barrel.position.clone(),
+            mesh: barrel
+        });
+    });
+    
+    // 3. Add fallen sign - no changes needed, it has a fixed position
+    const fallenSign = createFallenSign();
+    fallenSign.position.set(-12, 0.3, -3);
+    fallenSign.rotation.set(0, Math.PI/4, Math.PI/2);
+    parent.add(fallenSign);
+}
+
+// Create a tire model
+function createTire() {
+    const tireGroup = new THREE.Group();
+    
+    // Tire outer
+    const tireGeometry = new THREE.TorusGeometry(0.5, 0.25, 16, 32);
+    const tireMaterial = new THREE.MeshStandardMaterial({
+        color: 0x111111,
+        roughness: 0.9,
+        metalness: 0.1
+    });
+    const tire = new THREE.Mesh(tireGeometry, tireMaterial);
+    tireGroup.add(tire);
+    
+    // Tire inner rim
+    const rimGeometry = new THREE.CylinderGeometry(0.3, 0.3, 0.2, 16);
+    const rimMaterial = new THREE.MeshStandardMaterial({
+        color: 0x777777,
+        roughness: 0.6,
+        metalness: 0.5
+    });
+    const rim = new THREE.Mesh(rimGeometry, rimMaterial);
+    rim.rotation.x = Math.PI/2;
+    tireGroup.add(rim);
+    
+    return tireGroup;
+}
+
+// Create an oil barrel
+function createOilBarrel() {
+    const barrelGroup = new THREE.Group();
+    
+    // Barrel body
+    const barrelGeometry = new THREE.CylinderGeometry(0.5, 0.5, 1.5, 16);
+    
+    // Randomly choose color for variety
+    const barrelColors = [0xff0000, 0x0000ff, 0xffbb00];
+    const barrelColor = barrelColors[Math.floor(Math.random() * barrelColors.length)];
+    
+    const barrelMaterial = new THREE.MeshStandardMaterial({
+        color: barrelColor,
+        roughness: 0.7,
+        metalness: 0.3
+    });
+    
+    const barrel = new THREE.Mesh(barrelGeometry, barrelMaterial);
+    barrelGroup.add(barrel);
+    
+    // Add rusty spots and damage
+    addRustySpots(barrel);
+    
+    // Add ridges to barrel
+    const ridgeGeometry = new THREE.TorusGeometry(0.5, 0.05, 8, 32);
+    const ridgeMaterial = new THREE.MeshStandardMaterial({
+        color: 0x333333,
+        roughness: 0.5,
+        metalness: 0.5
+    });
+    
+    // Top ridge
+    const topRidge = new THREE.Mesh(ridgeGeometry, ridgeMaterial);
+    topRidge.position.y = 0.7;
+    topRidge.rotation.x = Math.PI/2;
+    barrelGroup.add(topRidge);
+    
+    // Bottom ridge
+    const bottomRidge = new THREE.Mesh(ridgeGeometry, ridgeMaterial);
+    bottomRidge.position.y = -0.7;
+    bottomRidge.rotation.x = Math.PI/2;
+    barrelGroup.add(bottomRidge);
+    
+    return barrelGroup;
+}
+
+// Create a fallen gas price sign
+function createFallenSign() {
+    const signGroup = new THREE.Group();
+    
+    // Sign board
+    const signGeometry = new THREE.BoxGeometry(4, 3, 0.2);
+    const signMaterial = new THREE.MeshStandardMaterial({
+        color: 0xdddddd,
+        roughness: 0.7,
+        metalness: 0.1
+    });
+    
+    const sign = new THREE.Mesh(signGeometry, signMaterial);
+    signGroup.add(sign);
+    
+    // Add price panels
+    const panelGeometry = new THREE.PlaneGeometry(0.8, 0.6);
+    const panelMaterial = new THREE.MeshBasicMaterial({
+        color: 0x000000,
+        side: THREE.DoubleSide
+    });
+    
+    // Create a few price panels
+    for (let i = 0; i < 2; i++) {
+        const panel = new THREE.Mesh(panelGeometry, panelMaterial);
+        panel.position.set(-0.9 + i * 1.8, 0.5, 0.11);
+        signGroup.add(panel);
+        
+        // Add price in red
+        const priceMaterial = new THREE.MeshBasicMaterial({
+            color: 0xff0000,
+            side: THREE.DoubleSide
+        });
+        
+        // Create price digits randomly
+        const price = (6 + Math.random() * 4).toFixed(2);
+        createPriceText(panel, price, priceMaterial);
+    }
+    
+    return signGroup;
+}
+
+// Create price text for the gas sign
+function createPriceText(parent, price, material) {
+    // This is a simplified version - just add a red plane with a random price
+    const textGeometry = new THREE.PlaneGeometry(0.6, 0.4);
+    const textMesh = new THREE.Mesh(textGeometry, material);
+    textMesh.position.z = 0.01;
+    parent.add(textMesh);
+}
+
+// Add broken lighting effects
+function addBrokenLighting(parent) {
+    // Create a flickering light on the canopy
+    const flickerLight = new THREE.PointLight(0xffffaa, 0.8, 10);
+    flickerLight.position.set(-4, 4.9, 0);
+    parent.add(flickerLight);
+    
+    // Add broken light fixture
+    const fixtureGeometry = new THREE.BoxGeometry(0.4, 0.1, 0.4);
+    const fixtureMaterial = new THREE.MeshStandardMaterial({
+        color: 0x333333,
+        roughness: 0.5,
+        metalness: 0.7
+    });
+    
+    const fixture = new THREE.Mesh(fixtureGeometry, fixtureMaterial);
+    fixture.position.copy(flickerLight.position);
+    fixture.position.y -= 0.05;
+    parent.add(fixture);
+    
+    // Animate the flickering
+    const flickerParams = {
+        baseIntensity: 0.8,
+        flickerSpeed: 0.2,
+        flickerIntensity: 0.5
+    };
+    
+    function animateFlicker() {
+        if (!fixture.parent) return; // Stop if removed from scene
+        
+        const time = Date.now() * 0.001;
+        
+        // Random flickering effect
+        const flicker = Math.sin(time * flickerParams.flickerSpeed * 10) * flickerParams.flickerIntensity;
+        flickerLight.intensity = flickerParams.baseIntensity + flicker;
+        
+        // Occasionally turn off completely
+        if (Math.random() > 0.997) {
+            flickerLight.intensity = 0;
+            setTimeout(() => {
+                // Turn back on after a short time
+                if (flickerLight.parent) flickerLight.intensity = flickerParams.baseIntensity;
+            }, 100 + Math.random() * 300);
+        }
+        
+        requestAnimationFrame(animateFlicker);
+    }
+    
+    animateFlicker();
+}
+
+// Similarly, update enemy collision detection
+function updateCheckEnemyCollisions() {
+    const originalCheckEnemyCollisions = checkEnemyCollisions;
+    
+    checkEnemyCollisions = function(enemy, originalX, originalZ) {
+        // Check original collisions first
+        if (originalCheckEnemyCollisions(enemy, originalX, originalZ)) {
+            return true;
+        }
+        
+        // Check collision with gas station elements
+        const gasStations = scene.children.filter(obj => obj.userData && obj.userData.isGasStation);
+        const enemyRadius = enemy.geometry.parameters.width / 2;
+        
+        for (const station of gasStations) {
+            if (!station.userData.collisionElements) continue;
+            
+            for (const element of station.userData.collisionElements) {
+                let collision = false;
+                
+                if (element.type === 'box') {
+                    // Box collision
+                    const dx = Math.abs(element.position.x - enemy.position.x);
+                    const dz = Math.abs(element.position.z - enemy.position.z);
+                    
+                    collision = (
+                        dx < element.width/2 + enemyRadius &&
+                        dz < element.depth/2 + enemyRadius
+                    );
+                } 
+                else if (element.type === 'cylinder') {
+                    // Cylinder collision (simplified as circle in XZ plane)
+                    const dx = element.position.x - enemy.position.x;
+                    const dz = element.position.z - enemy.position.z;
+                    const distance = Math.sqrt(dx*dx + dz*dz);
+                    
+                    collision = distance < element.radius + enemyRadius;
+                }
+                
+                if (collision) {
+                    return true;
+                }
+            }
+        }
+        
+        return false;
+    };
+}
+
+// Function to add the gas station to the game in the main.js file
+function addAbandonedGasStation() {
+    // Create the gas station
+    const gasStation = createAbandonedGasStation();
+    
+    return gasStation;
+}
+
+function applyObstacleAvoidance(enemy, initialDirection, movement, moveSpeed) {
+    // Get enemy dimensions for better calculations
+    const enemyWidth = enemy.geometry.parameters.width;
+    
+    // Store original position for collision checks
+    const originalX = enemy.position.x;
+    const originalZ = enemy.position.z;
+    
+    // Check if enemy has been stuck for too long and needs a major direction change
+    if (!enemy.userData.stuckCounter) {
+        enemy.userData.stuckCounter = 0;
+    }
+    
+    // Try multiple alternative directions if the enemy is stuck
+    const angles = [
+        Math.PI / 4,     // 45° right
+        -Math.PI / 4,    // 45° left
+        Math.PI / 2,     // 90° right
+        -Math.PI / 2,    // 90° left
+        3 * Math.PI / 4, // 135° right
+        -3 * Math.PI / 4 // 135° left
+    ];
+    
+    // If we have a lastSuccessfulDirection and not stuck too long, prioritize it
+    if (enemy.userData.lastSuccessfulDirection && enemy.userData.stuckCounter < 10) {
+        // Try a slight variation of the last successful direction first
+        const variationAngle = (Math.random() - 0.5) * Math.PI / 4; // ±22.5°
+        const variation = new THREE.Matrix4().makeRotationY(variationAngle);
+        
+        const variationDirection = enemy.userData.lastSuccessfulDirection.clone()
+            .applyMatrix4(variation)
+            .normalize();
+        
+        // Try this direction
+        enemy.position.x = originalX + variationDirection.x * moveSpeed;
+        enemy.position.z = originalZ + variationDirection.z * moveSpeed;
+        
+        // If no collision, we found a good path
+        if (!checkEnemyCollisions(enemy, originalX, originalZ)) {
+            enemy.userData.stuckCounter = 0;
+            return;
+        }
+        
+        // Reset position for next attempt
         enemy.position.x = originalX;
         enemy.position.z = originalZ;
     }
+    
+    // Try each angle until we find a clear path
+    for (const angle of angles) {
+        // Create a rotation matrix for the current angle
+        const rotation = new THREE.Matrix4().makeRotationY(angle);
+        
+        // Apply rotation to the initial direction
+        const newDirection = initialDirection.clone().applyMatrix4(rotation).normalize();
+        
+        // Try moving in the new direction
+        enemy.position.x = originalX + newDirection.x * moveSpeed;
+        enemy.position.z = originalZ + newDirection.z * moveSpeed;
+        
+        // Check if this direction is clear
+        if (!checkEnemyCollisions(enemy, originalX, originalZ)) {
+            // Found a clear path, update the last successful direction
+            enemy.userData.lastSuccessfulDirection = newDirection.clone();
+            enemy.userData.stuckCounter = 0;
+            return;
+        }
+        
+        // Reset position for next attempt
+        enemy.position.x = originalX;
+        enemy.position.z = originalZ;
+    }
+    
+    // If all standard angles failed, try a random direction
+    const randomAngle = Math.random() * Math.PI * 2;
+    const randomDirection = new THREE.Vector3(
+        Math.cos(randomAngle),
+        0,
+        Math.sin(randomAngle)
+    );
+    
+    enemy.position.x = originalX + randomDirection.x * moveSpeed;
+    enemy.position.z = originalZ + randomDirection.z * moveSpeed;
+    
+    // Check if random direction works
+    if (!checkEnemyCollisions(enemy, originalX, originalZ)) {
+        enemy.userData.lastSuccessfulDirection = randomDirection.clone();
+        enemy.userData.stuckCounter = 0;
+    } else {
+        // Still stuck, increment counter
+        enemy.userData.stuckCounter++;
+        
+        // Reset to original position
+        enemy.position.x = originalX;
+        enemy.position.z = originalZ;
+        
+        // If stuck too long, teleport slightly to break free (last resort)
+        if (enemy.userData.stuckCounter > 20) {
+            const teleportRadius = enemyWidth * 2;
+            const teleportAngle = Math.random() * Math.PI * 2;
+            
+            enemy.position.x = originalX + Math.cos(teleportAngle) * teleportRadius;
+            enemy.position.z = originalZ + Math.sin(teleportAngle) * teleportRadius;
+            
+            // If the teleport would cause a collision, don't do it
+            if (checkEnemyCollisions(enemy, originalX, originalZ)) {
+                enemy.position.x = originalX;
+                enemy.position.z = originalZ;
+            } else {
+                enemy.userData.stuckCounter = 0;
+            }
+        }
+    }
+}
+
+// Add this method to enhance obstacle detection
+function detectNearbyObstacles(enemy, range) {
+    const obstacles = [];
+    const enemyPos = new THREE.Vector3(enemy.position.x, 0, enemy.position.z);
+    
+    // Check cars
+    for (const car of abandonedCars) {
+        if (!car || !car.userData) continue;
+        
+        const carPos = new THREE.Vector3(car.position.x, 0, car.position.z);
+        const distance = enemyPos.distanceTo(carPos);
+        
+        if (distance < range + car.userData.collisionRadius) {
+            obstacles.push({
+                object: car,
+                position: carPos,
+                radius: car.userData.collisionRadius,
+                distance: distance
+            });
+        }
+    }
+    
+    // Check road lamps
+    for (const lamp of roadLampObjects) {
+        const lampPos = new THREE.Vector3(lamp.position.x, 0, lamp.position.z);
+        const distance = enemyPos.distanceTo(lampPos);
+        
+        if (distance < range + lamp.userData.collisionRadius) {
+            obstacles.push({
+                object: lamp,
+                position: lampPos,
+                radius: lamp.userData.collisionRadius,
+                distance: distance
+            });
+        }
+    }
+    
+    // Check other enemies
+    for (const otherEnemy of activeEnemies) {
+        if (otherEnemy === enemy) continue;
+        
+        const otherPos = new THREE.Vector3(otherEnemy.position.x, 0, otherEnemy.position.z);
+        const distance = enemyPos.distanceTo(otherPos);
+        const otherRadius = otherEnemy.geometry.parameters.width / 2;
+        
+        if (distance < range + otherRadius) {
+            obstacles.push({
+                object: otherEnemy,
+                position: otherPos,
+                radius: otherRadius,
+                distance: distance
+            });
+        }
+    }
+    
+    // Sort obstacles by distance
+    obstacles.sort((a, b) => a.distance - b.distance);
+    
+    return obstacles;
 }
 
 // Function to check enemy collisions
 function checkEnemyCollisions(enemy, originalX, originalZ) {
     // Check collision with player
     const playerRadius = 0.5;
+    const enemyRadius = enemy.geometry.parameters.width / 2;
     const distToPlayer = Math.sqrt(
         Math.pow(enemy.position.x - player.position.x, 2) +
         Math.pow(enemy.position.z - player.position.z, 2)
     );
     
-    if (distToPlayer < playerRadius + enemy.geometry.parameters.width / 2) {
+    if (distToPlayer < playerRadius + enemyRadius) {
         return true;
     }
     
@@ -8382,31 +9976,87 @@ function checkEnemyCollisions(enemy, originalX, originalZ) {
             Math.pow(enemy.position.z - lamp.position.z, 2)
         );
         
-        const enemyRadius = enemy.geometry.parameters.width / 2;
-        
         if (distToLamp < (lamp.userData.collisionRadius + enemyRadius)) {
             return true; // Collision with lamp post
         }
     }
     
-    // NEW: Check collisions with road blockade areas
-    const roadEndX = 110; // Same as in addRoadBlockades
+    // NEW: Check collisions with abandoned cars
+    for (const car of abandonedCars) {
+        if (!car || !car.userData) continue;
+        
+        // Create vectors for position calculations
+        const enemyPos = new THREE.Vector3(enemy.position.x, enemy.position.y, enemy.position.z);
+        const carPos = car.position.clone();
+        
+        // Get car dimensions from userData
+        const carWidth = car.userData.collisionWidth;
+        const carDepth = car.userData.collisionDepth;
+        
+        if (!carWidth || !carDepth) continue;
+        
+        // Vector from car to enemy
+        const toEnemy = new THREE.Vector3().subVectors(enemyPos, carPos);
+        
+        // Transform to car's local space
+        toEnemy.applyAxisAngle(new THREE.Vector3(0, 1, 0), -car.rotation.y);
+        
+        // Check AABB collision in car's local space
+        const halfWidth = carWidth / 2;
+        const halfDepth = carDepth / 2;
+        
+        if (
+            Math.abs(toEnemy.x) < halfWidth + enemyRadius &&
+            Math.abs(toEnemy.z) < halfDepth + enemyRadius
+        ) {
+            return true; // Collision with car
+        }
+    }
+    
+    // Check collisions with road blockade areas
+    const roadEndX = 110;
     const roadWidth = 15;
-    const blockadeDepth = 12; // How "deep" the blockade area is
-    const enemyRadius = enemy.geometry.parameters.width / 2;
+    const blockadeDepth = 12;
     
     // East blockade area (positive X)
-    if (Math.abs(enemy.position.x - roadEndX) < blockadeDepth && Math.abs(enemy.position.z) < roadWidth / 2 + 5) {
+    if (Math.abs(enemy.position.x - roadEndX) < blockadeDepth && 
+        Math.abs(enemy.position.z) < roadWidth / 2 + 5) {
         return true; // Collision with east blockade area
     }
     
     // West blockade area (negative X)
-    if (Math.abs(enemy.position.x + roadEndX) < blockadeDepth && Math.abs(enemy.position.z) < roadWidth / 2 + 5) {
+    if (Math.abs(enemy.position.x + roadEndX) < blockadeDepth && 
+        Math.abs(enemy.position.z) < roadWidth / 2 + 5) {
         return true; // Collision with west blockade area
+    }
+    
+    // NEW: Check collision with environmental objects (rock formations and trees)
+    if (scene.userData.environmentalColliders) {
+        for (const collider of scene.userData.environmentalColliders) {
+            if (collider.type === 'circle') {
+                const dx = collider.position.x - enemy.position.x;
+                const dz = collider.position.z - enemy.position.z;
+                const distance = Math.sqrt(dx * dx + dz * dz);
+                
+                if (distance < (collider.radius + enemyRadius)) {
+                    return true; // Collision detected
+                }
+            } 
+            else if (collider.type === 'cylinder') {
+                const dx = collider.position.x - enemy.position.x;
+                const dz = collider.position.z - enemy.position.z;
+                const distance = Math.sqrt(dx * dx + dz * dz);
+                
+                if (distance < (collider.radius + enemyRadius)) {
+                    return true; // Collision detected
+                }
+            }
+        }
     }
     
     return false; // No collision detected
 }
+
 // Projectile system
 const projectiles = [];
 
@@ -9069,8 +10719,16 @@ function resetGame() {
             scene.remove(bullet);
         }
     }
+
+    // Clear abandoned cars
+    for (const car of abandonedCars) {
+        if (car.parent) {
+            scene.remove(car);
+        }
+    }
     
     // Clear all arrays
+    abandonedCars = [];
     enemies = [];
     activeEnemies = [];
     projectiles.length = 0;
