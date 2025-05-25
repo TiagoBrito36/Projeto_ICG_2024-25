@@ -104,7 +104,8 @@ const ENEMY_TYPES = {
 // First, add weapon type constants at the top of your file
 const WEAPON_TYPES = {
     KNIFE: 0,
-    PISTOL: 1
+    PISTOL: 1,
+    SHOTGUN: 2,
 };
 
 const ITEM_TYPES = {
@@ -158,6 +159,14 @@ let pistolAmmo = 16;
 let pistolMaxAmmo = 16;
 let pistolReloading = false;
 let bullets = [];
+let shotgunModel = null;
+let shotgunAmmo = 6;
+let shotgunMaxAmmo = 6;
+let shotgunReloading = false;
+const SHOTGUN_IDLE_POSITION = new THREE.Vector3(0.35, -0.3, -0.5);
+const SHOTGUN_IDLE_ROTATION = new THREE.Euler(0, Math.PI, 0);
+let shotgunAnimationInProgress = false;
+let shotgunAnimationId = null;
 
 // Add these pistol position globals at the top with your other variables
 const PISTOL_IDLE_POSITION = new THREE.Vector3(0.3, -0.3, -0.5);
@@ -844,6 +853,7 @@ function getItemSymbol(item) {
     switch(itemType) {
         case WEAPON_TYPES.KNIFE: return '🔪'; 
         case WEAPON_TYPES.PISTOL: return '🔫';
+        case WEAPON_TYPES.SHOTGUN: return '🦾'; // Using a different emoji for shotgun
         case ITEM_TYPES.BANDAGE: return '🩹';
         case ITEM_TYPES.MEDKIT: return '🧰';
         case ITEM_TYPES.MINI_SHIELD: return '🛡️';
@@ -1128,6 +1138,16 @@ function useSelectedItem() {
         
         pistolModel.visible = true;
         firePistol();
+        return;
+    }
+
+    else if (item === WEAPON_TYPES.SHOTGUN) {
+        if (!shotgunModel) {
+            createShotgunModel();
+        }
+        
+        shotgunModel.visible = true;
+        fireShotgun();
         return;
     }
     
@@ -1685,6 +1705,11 @@ function updateWeaponVisibility() {
     if (pistolModel) {
         pistolModel.visible = (currentItem === WEAPON_TYPES.PISTOL);
     }
+
+    // Handle shotgun visibility
+    if (shotgunModel) {
+        shotgunModel.visible = (currentItem === WEAPON_TYPES.SHOTGUN);
+    }
     
     // Handle consumable item visibility
     if (currentItem !== null && typeof currentItem === 'object') {
@@ -1725,8 +1750,9 @@ function updateWeaponVisibility() {
     // Update ammo display container visibility
     const ammoContainer = document.getElementById('ammoContainer');
     if (ammoContainer) {
-        // Hide/show the container, not just the display
-        ammoContainer.style.display = (currentItem === WEAPON_TYPES.PISTOL) ? 'block' : 'none';
+        // Show ammo for pistol or shotgun
+        ammoContainer.style.display = (currentItem === WEAPON_TYPES.PISTOL || 
+                                       currentItem === WEAPON_TYPES.SHOTGUN) ? 'block' : 'none';
     }
 }
 
@@ -2249,7 +2275,7 @@ function startGame() {
     updateCoinDisplay();
     
     // Add pistol to inventory alongside knife
-    inventory = [WEAPON_TYPES.KNIFE, WEAPON_TYPES.PISTOL, null, null, null];
+    inventory = [WEAPON_TYPES.KNIFE, WEAPON_TYPES.PISTOL, WEAPON_TYPES.SHOTGUN, null, null];
     inventoryItems = Array(10).fill(null);
     
     // Reset pistol ammo
@@ -2264,6 +2290,7 @@ function startGame() {
     setTimeout(() => {
         createKnifeModel();
         createPistolModel();
+        createShotgunModel();
     }, 100);
     
     // Initialize the knife as first item
@@ -3022,6 +3049,19 @@ function updateBullets() {
             continue;
         }
         
+        // Calculate distance traveled for shotgun pellets (for damage falloff)
+        const isShotgunPellet = bullet.userData.maxEffectiveRange !== undefined;
+        if (isShotgunPellet) {
+            const distanceTraveled = bullet.position.distanceTo(camera.position);
+            
+            // Apply damage falloff based on distance
+            if (distanceTraveled > bullet.userData.maxEffectiveRange) {
+                // Calculate damage reduction based on how far beyond max range
+                const overRangeFactor = Math.min(1, (distanceTraveled - bullet.userData.maxEffectiveRange) / 5);
+                bullet.userData.damage = bullet.userData.initialDamage * (1 - overRangeFactor);
+            }
+        }
+        
         // Check enemy hits
         for (let j = 0; j < activeEnemies.length; j++) {
             const enemy = activeEnemies[j];
@@ -3206,6 +3246,9 @@ document.addEventListener('keydown', (event) => {
     if (event.code === 'KeyR' && gameStarted && !isPaused) {
         if (inventory[selectedSlot] === WEAPON_TYPES.PISTOL && pistolAmmo < pistolMaxAmmo && !pistolReloading) {
             animatePistolReload();
+        }
+        else if (inventory[selectedSlot] === WEAPON_TYPES.SHOTGUN && shotgunAmmo < shotgunMaxAmmo && !shotgunReloading) {
+            animateShotgunReload();
         }
     }
 });
@@ -6360,6 +6403,277 @@ function bossActivateFireRing(boss) {
     
     // Start animation
     animateFireParticles();
+}
+
+function createShotgunModel() {
+    if (shotgunModel) {
+        camera.remove(shotgunModel);
+    }
+    
+    // Create shotgun group
+    shotgunModel = new THREE.Group();
+    
+    // Create shotgun barrel (longer than pistol)
+    const barrelGeometry = new THREE.CylinderGeometry(0.05, 0.05, 0.7, 16);
+    const barrelMaterial = new THREE.MeshStandardMaterial({
+        color: 0x444444,
+        roughness: 0.2,
+        metalness: 0.9
+    });
+    const barrel = new THREE.Mesh(barrelGeometry, barrelMaterial);
+    barrel.rotation.x = Math.PI / 2;
+    barrel.position.set(0, 0, 0.2);
+    barrel.castShadow = true;
+    barrel.receiveShadow = true;
+    shotgunModel.add(barrel);
+    
+    // Create shotgun body
+    const bodyGeometry = new THREE.BoxGeometry(0.12, 0.15, 0.4);
+    const bodyMaterial = new THREE.MeshStandardMaterial({
+        color: 0x333333,
+        roughness: 0.3,
+        metalness: 0.8
+    });
+    const body = new THREE.Mesh(bodyGeometry, bodyMaterial);
+    body.position.set(0, -0.08, 0);
+    body.castShadow = true;
+    body.receiveShadow = true;
+    shotgunModel.add(body);
+    
+    // Create shotgun handle/stock
+    const handleGeometry = new THREE.BoxGeometry(0.08, 0.25, 0.1);
+    const handleMaterial = new THREE.MeshStandardMaterial({
+        color: 0x5c2e00, // Brown wooden stock
+        roughness: 0.7,
+        metalness: 0.1
+    });
+    const handle = new THREE.Mesh(handleGeometry, handleMaterial);
+    handle.position.set(0, -0.25, -0.15);
+    handle.castShadow = true;
+    handle.receiveShadow = true;
+    shotgunModel.add(handle);
+    
+    // Add a simple pump mechanism
+    const pumpGeometry = new THREE.BoxGeometry(0.1, 0.1, 0.25);
+    const pumpMaterial = new THREE.MeshStandardMaterial({
+        color: 0x222222,
+        roughness: 0.5,
+        metalness: 0.7
+    });
+    const pump = new THREE.Mesh(pumpGeometry, pumpMaterial);
+    pump.position.set(0, -0.05, 0.05);
+    pump.castShadow = true;
+    pump.receiveShadow = true;
+    shotgunModel.add(pump);
+    
+    // Position the shotgun in view using constants
+    shotgunModel.position.copy(SHOTGUN_IDLE_POSITION);
+    shotgunModel.rotation.copy(SHOTGUN_IDLE_ROTATION);
+    
+    // Add a dedicated light
+    const shotgunLight = new THREE.PointLight(0xffffff, 1.5, 1);
+    shotgunLight.position.set(0, 0, -0.2);
+    shotgunModel.add(shotgunLight);
+    
+    camera.add(shotgunModel);
+    console.log("Shotgun model created");
+    
+    shotgunModel.visible = (inventory[selectedSlot] === WEAPON_TYPES.SHOTGUN);
+    return shotgunModel;
+}
+
+function fireShotgun() {
+    if (shotgunReloading) return;
+    
+    if (shotgunAmmo <= 0) {
+        // Auto reload when empty
+        animateShotgunReload();
+        return;
+    }
+    
+    // Decrement ammo
+    shotgunAmmo--;
+    updateAmmoDisplay();
+    
+    // Play firing animation
+    animateShotgunFire();
+    
+    // Create shotgun pellets (multiple bullets with spread)
+    const pelletCount = 8; // Number of pellets per shot
+    const spreadAngle = Math.PI / 10; // Spread angle in radians
+    
+    for (let i = 0; i < pelletCount; i++) {
+        createShotgunPellet(spreadAngle);
+    }
+    
+    // Auto reload when empty
+    if (shotgunAmmo === 0) {
+        setTimeout(animateShotgunReload, 300);
+    }
+}
+
+function createShotgunPellet(spreadAngle) {
+    // Create bullet geometry (smaller than regular bullets)
+    const bulletGeometry = new THREE.SphereGeometry(0.02, 8, 8);
+    const bulletMaterial = new THREE.MeshBasicMaterial({ color: 0xffff00 });
+    const bullet = new THREE.Mesh(bulletGeometry, bulletMaterial);
+    
+    // Add shadow casting to bullet
+    bullet.castShadow = true;
+    
+    // Get camera position and direction
+    const cameraPosition = new THREE.Vector3();
+    camera.getWorldPosition(cameraPosition);
+    
+    const cameraDirection = new THREE.Vector3(0, 0, -1);
+    camera.getWorldDirection(cameraDirection);
+    
+    // Apply random spread to direction
+    const randomSpreadX = (Math.random() - 0.5) * spreadAngle;
+    const randomSpreadY = (Math.random() - 0.5) * spreadAngle;
+    
+    // Create a rotation matrix for the spread
+    const rotationMatrix = new THREE.Matrix4().makeRotationY(randomSpreadX);
+    rotationMatrix.multiply(new THREE.Matrix4().makeRotationX(randomSpreadY));
+    
+    // Apply rotation to direction
+    const spreadDirection = cameraDirection.clone().applyMatrix4(rotationMatrix).normalize();
+    
+    // Position bullet at gun barrel
+    bullet.position.copy(cameraPosition).addScaledVector(cameraDirection, 0.6);
+    
+    // Orient bullet
+    bullet.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), spreadDirection);
+    
+    // Add bullet data with REDUCED lifetime for shorter range
+    bullet.userData = {
+        direction: spreadDirection,
+        speed: 2.0,
+        damage: 10, // Each pellet does less damage than a pistol bullet
+        lifetime: 300, // REDUCED from 500ms to 300ms for shorter range
+        spawnTime: performance.now(),
+        initialDamage: 10, // Store initial damage for falloff calculation
+        maxEffectiveRange: 8 // Maximum effective range in units before damage drops
+    };
+    
+    scene.add(bullet);
+    bullets.push(bullet);
+    
+    return bullet;
+}
+
+function animateShotgunFire() {
+    if (!shotgunModel || shotgunReloading) return;
+    
+    // Force cancel any ongoing animation to prevent conflicts
+    if (shotgunAnimationInProgress) {
+        cancelAnimationFrame(shotgunAnimationId);
+        // Reset position immediately
+        shotgunModel.position.copy(SHOTGUN_IDLE_POSITION);
+        shotgunModel.rotation.copy(SHOTGUN_IDLE_ROTATION);
+    }
+    
+    // Mark animation as in progress
+    shotgunAnimationInProgress = true;
+    
+    // Animation constants - stronger recoil than pistol
+    const recoilDuration = 100; // milliseconds
+    const returnDuration = 200; // milliseconds
+    
+    // Start time
+    const startTime = performance.now();
+    
+    function animate() {
+        const now = performance.now();
+        const elapsed = now - startTime;
+        
+        if (elapsed < recoilDuration) {
+            // Recoil motion - stronger than pistol
+            const progress = elapsed / recoilDuration;
+            shotgunModel.position.z = SHOTGUN_IDLE_POSITION.z + (0.2 * progress);
+            shotgunModel.position.y = SHOTGUN_IDLE_POSITION.y + (0.05 * progress);
+            shotgunModel.rotation.x = SHOTGUN_IDLE_ROTATION.x - (Math.PI / 24 * progress);
+            shotgunAnimationId = requestAnimationFrame(animate);
+        } else if (elapsed < recoilDuration + returnDuration) {
+            // Return motion
+            const returnProgress = (elapsed - recoilDuration) / returnDuration;
+            shotgunModel.position.z = SHOTGUN_IDLE_POSITION.z + (0.2 * (1 - returnProgress));
+            shotgunModel.position.y = SHOTGUN_IDLE_POSITION.y + (0.05 * (1 - returnProgress));
+            shotgunModel.rotation.x = SHOTGUN_IDLE_ROTATION.x - (Math.PI / 24 * (1 - returnProgress));
+            shotgunAnimationId = requestAnimationFrame(animate);
+        } else {
+            // CRITICAL: Reset to exact original values
+            shotgunModel.position.copy(SHOTGUN_IDLE_POSITION);
+            shotgunModel.rotation.copy(SHOTGUN_IDLE_ROTATION);
+            
+            // Clear animation state
+            shotgunAnimationInProgress = false;
+            shotgunAnimationId = null;
+        }
+    }
+    
+    shotgunAnimationId = requestAnimationFrame(animate);
+}
+
+function animateShotgunReload() {
+    if (!shotgunModel || shotgunReloading) return;
+    
+    // Force cancel any ongoing animation to prevent conflicts
+    if (shotgunAnimationInProgress) {
+        cancelAnimationFrame(shotgunAnimationId);
+        // Reset position immediately
+        shotgunModel.position.copy(SHOTGUN_IDLE_POSITION);
+        shotgunModel.rotation.copy(SHOTGUN_IDLE_ROTATION);
+    }
+    
+    shotgunReloading = true;
+    shotgunAnimationInProgress = true;
+    showNotification("Reloading shotgun...", 1200);
+    
+    // Animation constants - longer reload time than pistol
+    const totalDuration = 1200; // 1.2 seconds reload time
+    const startTime = performance.now();
+    
+    function animate() {
+        const now = performance.now();
+        const elapsed = now - startTime;
+        
+        if (elapsed < totalDuration) {
+            const progress = elapsed / totalDuration;
+            
+            // Pump action animation
+            if (progress < 0.25) {
+                // Pull back pump
+                const pumpProgress = progress * 4; // Scale to 0-1 range
+                shotgunModel.position.z = SHOTGUN_IDLE_POSITION.z - (0.1 * pumpProgress);
+            } else if (progress < 0.5) {
+                // Push forward pump
+                const pumpProgress = (progress - 0.25) * 4; // Scale to 0-1 range
+                shotgunModel.position.z = SHOTGUN_IDLE_POSITION.z - (0.1 * (1 - pumpProgress));
+            } else {
+                // Loading shells animation - tilt slightly
+                const loadProgress = (progress - 0.5) * 2; // Scale to 0-1 range
+                shotgunModel.rotation.z = SHOTGUN_IDLE_ROTATION.z + (Math.PI / 16 * Math.sin(loadProgress * Math.PI));
+            }
+            
+            shotgunAnimationId = requestAnimationFrame(animate);
+        } else {
+            // CRITICAL: Reset to exact original values
+            shotgunModel.position.copy(SHOTGUN_IDLE_POSITION);
+            shotgunModel.rotation.copy(SHOTGUN_IDLE_ROTATION);
+            
+            // Reload complete
+            shotgunAmmo = shotgunMaxAmmo;
+            shotgunReloading = false;
+            updateAmmoDisplay();
+            
+            // Clear animation state
+            shotgunAnimationInProgress = false;
+            shotgunAnimationId = null;
+        }
+    }
+    
+    shotgunAnimationId = requestAnimationFrame(animate);
 }
 
 // Boss ability: Charge Attack
@@ -12867,16 +13181,17 @@ function createAmmoDisplay() {
 
 // Update ammo display
 function updateAmmoDisplay() {
-    const ammoDisplay = document.getElementById('ammoDisplay');
-    if (ammoDisplay) {
-        ammoDisplay.textContent = `${pistolAmmo}/${pistolMaxAmmo}`;
-        
-        // Red when low on ammo
-        if (pistolAmmo <= 3) {
-            ammoDisplay.style.color = '#ff0000';
-        } else {
-            ammoDisplay.style.color = '#ffffff';
-        }
+    const ammoElement = document.getElementById('ammoDisplay');
+    if (!ammoElement) return;
+    
+    const currentItem = inventory[selectedSlot];
+    
+    if (currentItem === WEAPON_TYPES.PISTOL) {
+        ammoElement.textContent = `${pistolAmmo}/${pistolMaxAmmo}`;
+    } else if (currentItem === WEAPON_TYPES.SHOTGUN) {
+        ammoElement.textContent = `${shotgunAmmo}/${shotgunMaxAmmo}`;
+    } else {
+        ammoElement.textContent = '';
     }
 }
 
