@@ -534,6 +534,7 @@ canvas {
 .shop-items {
     max-height: 300px;
     overflow-y: auto;
+    overflow-x: hidden; /* Add this to prevent horizontal scrolling */
     border: 1px solid #4a2f2f;
     border-radius: 5px;
     padding: 10px;
@@ -548,6 +549,8 @@ canvas {
     background-color: rgba(0, 0, 0, 0.5);
     border-radius: 5px;
     border: 1px solid #4a2f2f;
+    width: calc(100% - 22px); /* Account for padding and border */
+    box-sizing: border-box; /* Include padding and border in width calculation */
 }
 
 .shop-item:last-child {
@@ -632,4 +635,26 @@ canvas {
 
 .weapon-shop-item {
     border-left: 3px solid #ff6600;
+}
+
+.shop-category-header {
+        width: 100%;
+        text-align: left;
+        margin: 10px 0;
+        padding: 5px 15px;
+        background-color: rgba(0, 0, 0, 0.3);
+        border-radius: 5px;
+}
+    
+.shop-category-header h3 {
+    margin: 5px 0;
+    color: #ffcc00;
+    font-size: 18px;
+}
+    
+.shop-separator {
+    width: 90%;
+    height: 1px;
+    margin: 15px auto;
+    background-color: rgba(255, 255, 255, 0.3);
 }

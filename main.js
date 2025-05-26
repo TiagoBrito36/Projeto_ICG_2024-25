@@ -106,6 +106,11 @@ const WEAPON_TYPES = {
     KNIFE: 0,
     PISTOL: 1,
     SHOTGUN: 2,
+    ASSAULT_RIFLE: 3,
+    SNIPER_RIFLE: 4,
+    CROSSBOW: 5,
+    MINIGUN: 6,
+    ROCKET_LAUNCHER: 7,
 };
 
 const ITEM_TYPES = {
@@ -150,6 +155,55 @@ const SHOP_ITEMS = [
         description: "Adds 50 shield points",
         price: 20,
         icon: '🔷'
+    },
+    {
+        id: WEAPON_TYPES.PISTOL,
+        name: "Pistol",
+        description: "Standard sidearm with decent damage and rate of fire.",
+        price: 50,
+        icon: "🔫"
+    },
+    {
+        id: WEAPON_TYPES.SHOTGUN,
+        name: "Shotgun",
+        description: "Powerful at close range with spread damage.",
+        price: 150,
+        icon: "🔫"
+    },
+    {
+        id: WEAPON_TYPES.ASSAULT_RIFLE,
+        name: "Assault Rifle",
+        description: "Balanced weapon with rapid fire and moderate damage.",
+        price: 250,
+        icon: "🔫"
+    },
+    {
+        id: WEAPON_TYPES.SNIPER_RIFLE,
+        name: "Sniper Rifle",
+        description: "Long-range precision with high damage. Right-click to scope.",
+        price: 350,
+        icon: "🔫"
+    },
+    {
+        id: WEAPON_TYPES.CROSSBOW,
+        name: "Crossbow",
+        description: "Silent and deadly, with retrievable bolts.",
+        price: 200,
+        icon: "🏹"
+    },
+    {
+        id: WEAPON_TYPES.MINIGUN,
+        name: "Minigun",
+        description: "Extremely high rate of fire, but watch for overheating.",
+        price: 400,
+        icon: "🔫"
+    },
+    {
+        id: WEAPON_TYPES.ROCKET_LAUNCHER,
+        name: "Rocket Launcher",
+        description: "Explosive area damage. Be careful not to hit yourself!",
+        price: 500,
+        icon: "🚀"
     }
 ];
 
@@ -167,6 +221,58 @@ const SHOTGUN_IDLE_POSITION = new THREE.Vector3(0.35, -0.3, -0.5);
 const SHOTGUN_IDLE_ROTATION = new THREE.Euler(0, Math.PI, 0);
 let shotgunAnimationInProgress = false;
 let shotgunAnimationId = null;
+let assaultRifleModel = null;
+let assaultRifleAmmo = 30;
+let assaultRifleMaxAmmo = 30;
+let assaultRifleReloading = false;
+const ASSAULT_RIFLE_IDLE_POSITION = new THREE.Vector3(0.35, -0.35, -0.5);
+const ASSAULT_RIFLE_IDLE_ROTATION = new THREE.Euler(0, Math.PI, 0);
+let assaultRifleAnimationInProgress = false;
+let assaultRifleAnimationId = null;
+// Add these with your other weapon variables
+let sniperRifleModel = null;
+let sniperRifleAmmo = 1;
+let sniperRifleMaxAmmo = 1;
+let sniperRifleReloading = false;
+const SNIPER_RIFLE_IDLE_POSITION = new THREE.Vector3(0.35, -0.35, -0.5);
+const SNIPER_RIFLE_IDLE_ROTATION = new THREE.Euler(0, Math.PI, 0);
+let sniperRifleAnimationInProgress = false;
+let sniperRifleAnimationId = null;
+let isScoped = false;
+let normalFOV = 75; // Store the regular FOV
+let crossbowModel = null;
+let crossbowAmmo = 6;
+let crossbowMaxAmmo = 6;
+let crossbowReloading = false;
+const CROSSBOW_IDLE_POSITION = new THREE.Vector3(0.35, -0.35, -0.5);
+const CROSSBOW_IDLE_ROTATION = new THREE.Euler(0, Math.PI, 0);
+let crossbowAnimationInProgress = false;
+let crossbowAnimationId = null;
+
+// Add these with your other weapon variables
+let minigunModel = null;
+let minigunAmmo = 100;
+let minigunMaxAmmo = 100;
+let minigunReloading = false;
+const MINIGUN_IDLE_POSITION = new THREE.Vector3(0.35, -0.4, -0.5);
+const MINIGUN_IDLE_ROTATION = new THREE.Euler(0, Math.PI, 0);
+let minigunAnimationInProgress = false;
+let minigunAnimationId = null;
+let minigunBarrelRotation = 0;
+let minigunSpinning = false;
+let minigunSpinSpeed = 0;
+let minigunSpinningSound = null;
+let minigunSpinTimeout = null;
+let minigunFireInterval = null;
+let minigunHeatLevel = 0; // For overheating mechanic
+let rocketLauncherModel = null;
+let rocketLauncherAmmo = 1;
+let rocketLauncherMaxAmmo = 1;
+let rocketLauncherReloading = false;
+const ROCKET_LAUNCHER_IDLE_POSITION = new THREE.Vector3(0.35, -0.4, -0.5);
+const ROCKET_LAUNCHER_IDLE_ROTATION = new THREE.Euler(0, Math.PI, 0);
+let rocketLauncherAnimationInProgress = false;
+let rocketLauncherAnimationId = null;
 
 // Add these pistol position globals at the top with your other variables
 const PISTOL_IDLE_POSITION = new THREE.Vector3(0.3, -0.3, -0.5);
@@ -751,6 +857,2166 @@ function swapBarSlots(fromSlot, toSlot) {
     updateWeaponVisibility();
 }
 
+function createRocketLauncherModel() {
+    if (rocketLauncherModel) {
+        camera.remove(rocketLauncherModel);
+    }
+    
+    // Create rocket launcher group
+    rocketLauncherModel = new THREE.Group();
+    
+    // Create main tube
+    const tubeGeometry = new THREE.CylinderGeometry(0.1, 0.1, 0.8, 16);
+    const tubeMaterial = new THREE.MeshStandardMaterial({
+        color: 0x444444,
+        roughness: 0.4,
+        metalness: 0.7
+    });
+    const tube = new THREE.Mesh(tubeGeometry, tubeMaterial);
+    tube.rotation.x = Math.PI/2; // FIX: Changed rotation from Z to X axis
+    tube.castShadow = true;
+    tube.receiveShadow = true;
+    rocketLauncherModel.add(tube);
+    
+    // Create wider tube opening (front)
+    const muzzleGeometry = new THREE.CylinderGeometry(0.12, 0.12, 0.05, 16);
+    const muzzleMaterial = new THREE.MeshStandardMaterial({
+        color: 0x333333,
+        roughness: 0.5,
+        metalness: 0.8
+    });
+    const muzzle = new THREE.Mesh(muzzleGeometry, muzzleMaterial);
+    muzzle.rotation.x = Math.PI/2; // FIX: Changed rotation from Z to X axis
+    muzzle.position.set(0, 0, 0.425); // FIX: Adjusted position to Z axis
+    muzzle.castShadow = true;
+    muzzle.receiveShadow = true;
+    rocketLauncherModel.add(muzzle);
+    
+    // Create back of tube
+    const backGeometry = new THREE.CylinderGeometry(0.11, 0.11, 0.05, 16);
+    const backMaterial = new THREE.MeshStandardMaterial({
+        color: 0x333333,
+        roughness: 0.5,
+        metalness: 0.8
+    });
+    const back = new THREE.Mesh(backGeometry, backMaterial);
+    back.rotation.x = Math.PI/2; // FIX: Changed rotation from Z to X axis
+    back.position.set(0, 0, -0.425); // FIX: Adjusted position to Z axis
+    back.castShadow = true;
+    back.receiveShadow = true;
+    rocketLauncherModel.add(back);
+    
+    // Create handle/grip
+    const handleGeometry = new THREE.BoxGeometry(0.1, 0.25, 0.08);
+    const handleMaterial = new THREE.MeshStandardMaterial({
+        color: 0x222222,
+        roughness: 0.7,
+        metalness: 0.3
+    });
+    const handle = new THREE.Mesh(handleGeometry, handleMaterial);
+    handle.position.set(-0.1, -0.2, 0);
+    handle.castShadow = true;
+    handle.receiveShadow = true;
+    rocketLauncherModel.add(handle);
+    
+    // Create rocket inside the tube if ammo > 0
+    const rocketGeometry = new THREE.CylinderGeometry(0.05, 0.08, 0.3, 8);
+    const rocketMaterial = new THREE.MeshStandardMaterial({
+        color: 0xcc4400,
+        roughness: 0.3,
+        metalness: 0.5
+    });
+    const rocket = new THREE.Mesh(rocketGeometry, rocketMaterial);
+    rocket.rotation.x = Math.PI/2; // FIX: Changed rotation from Z to X axis
+    rocket.position.set(0, 0, 0.2); // FIX: Position visible in the tube, aligned with Z
+    rocket.castShadow = true;
+    rocket.receiveShadow = true;
+    rocketLauncherModel.add(rocket);
+    rocketLauncherModel.userData.loadedRocket = rocket;
+    
+    // Create sights on top
+    const sightGeometry = new THREE.BoxGeometry(0.3, 0.08, 0.04);
+    const sightMaterial = new THREE.MeshStandardMaterial({
+        color: 0x222222,
+        roughness: 0.6,
+        metalness: 0.5
+    });
+    const sight = new THREE.Mesh(sightGeometry, sightMaterial);
+    sight.position.set(0, 0.12, 0);
+    sight.castShadow = true;
+    sight.receiveShadow = true;
+    rocketLauncherModel.add(sight);
+    
+    // Add a support under the tube
+    const supportGeometry = new THREE.BoxGeometry(0.4, 0.08, 0.05);
+    const supportMaterial = new THREE.MeshStandardMaterial({
+        color: 0x333333,
+        roughness: 0.6,
+        metalness: 0.5
+    });
+    const support = new THREE.Mesh(supportGeometry, supportMaterial);
+    support.position.set(0.05, -0.1, 0);
+    support.castShadow = true;
+    support.receiveShadow = true;
+    rocketLauncherModel.add(support);
+    
+    // Add warning markings
+    const warningGeometry = new THREE.PlaneGeometry(0.3, 0.05);
+    const warningMaterial = new THREE.MeshBasicMaterial({
+        color: 0xffcc00,
+        side: THREE.DoubleSide
+    });
+    const warning = new THREE.Mesh(warningGeometry, warningMaterial);
+    warning.rotation.y = Math.PI/2;
+    warning.position.set(0, 0, 0.075);
+    rocketLauncherModel.add(warning);
+    
+    // Add a dedicated light for better visibility
+    const weaponLight = new THREE.PointLight(0xffffff, 1.0, 1);
+    weaponLight.position.set(0, 0.1, -0.2);
+    rocketLauncherModel.add(weaponLight);
+    
+    // Position the rocket launcher in view
+    rocketLauncherModel.position.copy(ROCKET_LAUNCHER_IDLE_POSITION);
+    rocketLauncherModel.rotation.copy(ROCKET_LAUNCHER_IDLE_ROTATION);
+    
+    camera.add(rocketLauncherModel);
+    console.log("Rocket launcher model created");
+    
+    // Update rocket visibility
+    updateRocketLauncherDisplay();
+    
+    rocketLauncherModel.visible = (inventory[selectedSlot] === WEAPON_TYPES.ROCKET_LAUNCHER);
+    return rocketLauncherModel;
+}
+
+// Function to update rocket visibility based on ammo
+function updateRocketLauncherDisplay() {
+    if (rocketLauncherModel && rocketLauncherModel.userData.loadedRocket) {
+        rocketLauncherModel.userData.loadedRocket.visible = (rocketLauncherAmmo > 0);
+    }
+}
+
+function fireRocketLauncher() {
+    if (rocketLauncherReloading) return;
+    
+    if (rocketLauncherAmmo <= 0) {
+        // Auto reload when empty
+        animateRocketLauncherReload();
+        return;
+    }
+    
+    // Decrement ammo
+    rocketLauncherAmmo--;
+    updateAmmoDisplay();
+    
+    // Update rocket visibility
+    updateRocketLauncherDisplay();
+    
+    // Play firing animation
+    animateRocketLauncherFire();
+    
+    // Create rocket projectile
+    createRocket();
+    
+    // Add screen shake for powerful weapon
+    addScreenShake(0.4, 400);
+    
+    // Auto reload if empty
+    if (rocketLauncherAmmo === 0) {
+        setTimeout(animateRocketLauncherReload, 300);
+    }
+}
+
+function createRocket() {
+    console.log("Creating rocket projectile");
+    
+    // Create rocket body
+    const rocketGroup = new THREE.Group();
+    
+    // Main body
+    const bodyGeometry = new THREE.CylinderGeometry(0.05, 0.08, 0.3, 8);
+    const bodyMaterial = new THREE.MeshStandardMaterial({ 
+        color: 0xcc4400,
+        roughness: 0.3,
+        metalness: 0.6,
+        emissive: 0x441100,  // Added emissive for better visibility
+        emissiveIntensity: 0.3
+    });
+    
+    const body = new THREE.Mesh(bodyGeometry, bodyMaterial);
+    body.rotation.x = Math.PI / 2; // Orient for forward flight
+    rocketGroup.add(body);
+    
+    // Rocket tip
+    const tipGeometry = new THREE.ConeGeometry(0.05, 0.1, 8);
+    const tipMaterial = new THREE.MeshStandardMaterial({
+        color: 0x888888,
+        roughness: 0.2,
+        metalness: 0.8
+    });
+    
+    const tip = new THREE.Mesh(tipGeometry, tipMaterial);
+    tip.position.z = 0.2; // Position at front of rocket
+    rocketGroup.add(tip);
+    
+    // Fins
+    const finGeometry = new THREE.BoxGeometry(0.08, 0.02, 0.08);
+    const finMaterial = new THREE.MeshStandardMaterial({
+        color: 0x666666,
+        roughness: 0.5,
+        metalness: 0.6
+    });
+    
+    // Add four fins
+    for (let i = 0; i < 4; i++) {
+        const fin = new THREE.Mesh(finGeometry, finMaterial);
+        const angle = (i / 4) * Math.PI * 2;
+        fin.position.set(
+            Math.cos(angle) * 0.06,
+            Math.sin(angle) * 0.06,
+            -0.08
+        );
+        fin.rotation.z = angle;
+        body.add(fin);
+    }
+    
+    // Get camera position and direction
+    const cameraPosition = new THREE.Vector3();
+    camera.getWorldPosition(cameraPosition);
+    
+    const cameraDirection = new THREE.Vector3(0, 0, -1);
+    camera.getWorldDirection(cameraDirection);
+    
+    // Position rocket at launcher muzzle - FURTHER forward for better visibility
+    rocketGroup.position.copy(cameraPosition).addScaledVector(cameraDirection, 4);
+    
+    // Orient rocket in flight direction
+    rocketGroup.lookAt(cameraPosition.clone().add(cameraDirection.multiplyScalar(10)));
+    
+    // Add point light to make rocket more visible
+    const rocketLight = new THREE.PointLight(0xff4400, 2, 3);
+    rocketLight.position.set(0, 0, 0);
+    rocketGroup.add(rocketLight);
+    
+    // IMPORTANT: Add rocket data BEFORE creating the thrust effect
+    rocketGroup.userData = {
+        direction: cameraDirection.clone(),
+        speed: 0.8, // Slower than bullets for gameplay
+        damage: 120, // High damage
+        blastRadius: 5, // Large blast radius
+        lifetime: 6000, // Longer lifetime
+        spawnTime: performance.now(),
+        isRocket: true
+    };
+    
+    // Add thrust effect AFTER setting userData
+    createRocketThrustEffect(rocketGroup);
+    
+    console.log("Adding rocket to scene at position:", rocketGroup.position);
+    scene.add(rocketGroup);
+    bullets.push(rocketGroup); // Use bullets array for tracking
+    
+    return rocketGroup;
+}
+
+// Create rocket thrust effect
+function createRocketThrustEffect(rocketObject) {
+    // Create particle emitter at back of rocket
+    const emitParticles = () => {
+        // Create fire particle
+        const particleGeometry = new THREE.SphereGeometry(0.04 + Math.random() * 0.04, 8, 8);
+        const particleMaterial = new THREE.MeshBasicMaterial({
+            color: new THREE.Color().setHSL(0.1, 0.7, 0.5 + Math.random() * 0.3), // Orange-yellow fire
+            transparent: true,
+            opacity: 0.7
+        });
+        
+        const particle = new THREE.Mesh(particleGeometry, particleMaterial);
+        
+        // Position at back of rocket with slight randomization
+        particle.position.copy(rocketObject.position);
+        const backDirection = rocketObject.userData.direction.clone().negate();
+        particle.position.addScaledVector(backDirection, 0.15);
+        particle.position.x += (Math.random() - 0.5) * 0.05;
+        particle.position.y += (Math.random() - 0.5) * 0.05;
+        particle.position.z += (Math.random() - 0.5) * 0.05;
+        
+        // Add to scene
+        scene.add(particle);
+        
+        // Animate particles
+        const particleSpeed = 0.05 + Math.random() * 0.05;
+        const startTime = performance.now();
+        const lifetime = 200 + Math.random() * 200;
+        
+        function animateParticle() {
+            const now = performance.now();
+            const elapsed = now - startTime;
+            
+            if (elapsed > lifetime || !rocketObject.parent) {
+                scene.remove(particle);
+                return;
+            }
+            
+            // Move particle backward from rocket
+            particle.position.addScaledVector(backDirection, particleSpeed);
+            
+            // Fade out over lifetime
+            const progress = elapsed / lifetime;
+            particle.material.opacity = 0.7 * (1 - progress);
+            
+            // Shrink particle
+            const scale = 1 - progress * 0.8;
+            particle.scale.set(scale, scale, scale);
+            
+            requestAnimationFrame(animateParticle);
+        }
+        
+        requestAnimationFrame(animateParticle);
+    };
+    
+    // Create initial particles
+    for (let i = 0; i < 5; i++) {
+        emitParticles();
+    }
+    
+    // Continue emitting particles
+    const emitterInterval = setInterval(emitParticles, 30); // Emit new particle every 30ms
+    
+    // Store interval ID in userData for cleanup
+    rocketObject.userData.thrustEmitter = emitterInterval;
+    
+    // Clear interval when rocket explodes or expires
+    const clearCheck = setInterval(() => {
+        if (!rocketObject.parent) {
+            clearInterval(emitterInterval);
+            clearInterval(clearCheck);
+        }
+    }, 1000);
+}
+
+function createRocketExplosion(position, radius, damage) {
+    // Create explosion sphere
+    const explosionGeometry = new THREE.SphereGeometry(0.3, 32, 32);
+    const explosionMaterial = new THREE.MeshBasicMaterial({
+        color: 0xff5500,
+        transparent: true,
+        opacity: 0.8
+    });
+    const explosion = new THREE.Mesh(explosionGeometry, explosionMaterial);
+    explosion.position.copy(position);
+    scene.add(explosion);
+    
+    // Create explosion light
+    const light = new THREE.PointLight(0xff5500, 3, radius * 3);
+    light.position.copy(position);
+    scene.add(light);
+    
+    // Create shockwave ring
+    const ringGeometry = new THREE.RingGeometry(0.3, 0.5, 32);
+    const ringMaterial = new THREE.MeshBasicMaterial({
+        color: 0xff7700,
+        transparent: true,
+        opacity: 0.7,
+        side: THREE.DoubleSide
+    });
+    const ring = new THREE.Mesh(ringGeometry, ringMaterial);
+    ring.position.copy(position);
+    ring.rotation.x = -Math.PI / 2;
+    scene.add(ring);
+    
+    // Add powerful screen shake
+    addScreenShake(0.8, 800);
+    
+    // Check for entities in blast radius
+    checkBlastDamage(position, radius, damage);
+    
+    // Animate explosion
+    const duration = 1000; // 1 second
+    const startTime = performance.now();
+    const maxSize = radius;
+    
+    function animateExplosion() {
+        const now = performance.now();
+        const elapsed = now - startTime;
+        const progress = elapsed / duration;
+        
+        if (progress >= 1) {
+            // Remove explosion elements
+            scene.remove(explosion);
+            scene.remove(light);
+            scene.remove(ring);
+            return;
+        }
+        
+        // Expand explosion
+        const currentSize = Math.min(maxSize * progress, maxSize);
+        explosion.scale.set(currentSize, currentSize, currentSize);
+        
+        // Expand ring faster than the sphere
+        const ringSize = Math.min(maxSize * progress * 2, maxSize * 2);
+        ring.scale.set(ringSize, ringSize, 1);
+        
+        // Fade out elements gradually
+        if (progress > 0.5) {
+            const fadeProgress = (progress - 0.5) * 2; // 0 to 1 in second half
+            explosion.material.opacity = 0.8 * (1 - fadeProgress);
+            ringMaterial.opacity = 0.7 * (1 - fadeProgress);
+            light.intensity = 3 * (1 - fadeProgress);
+        }
+        
+        requestAnimationFrame(animateExplosion);
+    }
+    
+    requestAnimationFrame(animateExplosion);
+}
+
+function checkBlastDamage(position, radius, damage) {
+    console.log(`Rocket explosion at ${position.x.toFixed(2)},${position.y.toFixed(2)},${position.z.toFixed(2)} with radius ${radius} and damage ${damage}`);
+    
+    // Check if player is within blast radius
+    const distanceToPlayer = position.distanceTo(player.position);
+    
+    if (distanceToPlayer <= radius) {
+        // Calculate damage falloff based on distance
+        const falloff = 1 - (distanceToPlayer / radius);
+        const actualDamage = Math.floor(damage * falloff);
+        
+        console.log(`Player hit by explosion! Distance: ${distanceToPlayer.toFixed(2)}, Damage: ${actualDamage}`);
+        
+        // Apply damage to player
+        takeDamage(actualDamage);
+        
+        // Add screen shake effect when player is hit directly
+        addScreenShake(0.3, 400);
+        
+        // Show hit marker when player is hit (self-damage indicator)
+        showHitMarker();
+    }
+    
+    // Check damage to enemies
+    let enemiesHit = 0;
+    
+    // Process ALL enemies in the blast radius
+    for (let i = 0; i < activeEnemies.length; i++) {
+        const enemy = activeEnemies[i];
+        if (!enemy || !enemy.position) continue;
+        
+        const distanceToEnemy = position.distanceTo(enemy.position);
+        
+        if (distanceToEnemy <= radius) {
+            // Calculate damage falloff based on distance
+            const falloff = 1 - (distanceToEnemy / radius);
+            const actualDamage = Math.floor(damage * falloff);
+            
+            enemiesHit++;
+            console.log(`Enemy #${i} hit by explosion! Distance: ${distanceToEnemy.toFixed(2)}, Damage: ${actualDamage}`);
+            
+            // IMPORTANT: Apply damage to each enemy in radius
+            damageEnemy(enemy, actualDamage);
+            
+            // Create hit effect for visual feedback
+            createHitEffect(enemy.position);
+        }
+    }
+    
+    // Show hit marker if any enemies were hit (in addition to player)
+    if (enemiesHit > 0) {
+        showHitMarker();
+        console.log(`Total enemies hit by explosion: ${enemiesHit}`);
+    }
+}
+
+function animateRocketLauncherFire() {
+    if (!rocketLauncherModel || rocketLauncherReloading) return;
+    
+    // Force cancel any ongoing animation
+    if (rocketLauncherAnimationInProgress) {
+        cancelAnimationFrame(rocketLauncherAnimationId);
+        // Reset position immediately
+        rocketLauncherModel.position.copy(ROCKET_LAUNCHER_IDLE_POSITION);
+        rocketLauncherModel.rotation.copy(ROCKET_LAUNCHER_IDLE_ROTATION);
+    }
+    
+    // Mark animation as in progress
+    rocketLauncherAnimationInProgress = true;
+    
+    // Animation constants - strong recoil
+    const recoilDuration = 150; // milliseconds
+    const returnDuration = 250; // milliseconds
+    
+    // Start time
+    const startTime = performance.now();
+    
+    function animate() {
+        const now = performance.now();
+        const elapsed = now - startTime;
+        
+        if (elapsed < recoilDuration) {
+            // Recoil motion - stronger than other weapons
+            const progress = elapsed / recoilDuration;
+            rocketLauncherModel.position.z = ROCKET_LAUNCHER_IDLE_POSITION.z + (0.25 * progress);
+            rocketLauncherModel.position.y = ROCKET_LAUNCHER_IDLE_POSITION.y + (0.06 * progress);
+            rocketLauncherModel.rotation.x = ROCKET_LAUNCHER_IDLE_ROTATION.x - (Math.PI / 15 * progress);
+            rocketLauncherAnimationId = requestAnimationFrame(animate);
+        } else if (elapsed < recoilDuration + returnDuration) {
+            // Return motion
+            const returnProgress = (elapsed - recoilDuration) / returnDuration;
+            rocketLauncherModel.position.z = ROCKET_LAUNCHER_IDLE_POSITION.z + (0.25 * (1 - returnProgress));
+            rocketLauncherModel.position.y = ROCKET_LAUNCHER_IDLE_POSITION.y + (0.06 * (1 - returnProgress));
+            rocketLauncherModel.rotation.x = ROCKET_LAUNCHER_IDLE_ROTATION.x - (Math.PI / 15 * (1 - returnProgress));
+            rocketLauncherAnimationId = requestAnimationFrame(animate);
+        } else {
+            // Reset to exact original values
+            rocketLauncherModel.position.copy(ROCKET_LAUNCHER_IDLE_POSITION);
+            rocketLauncherModel.rotation.copy(ROCKET_LAUNCHER_IDLE_ROTATION);
+            
+            // Clear animation state
+            rocketLauncherAnimationInProgress = false;
+            rocketLauncherAnimationId = null;
+        }
+    }
+    
+    rocketLauncherAnimationId = requestAnimationFrame(animate);
+}
+
+function animateRocketLauncherReload() {
+    if (!rocketLauncherModel || rocketLauncherReloading) return;
+    
+    // Force cancel any ongoing animation
+    if (rocketLauncherAnimationInProgress) {
+        cancelAnimationFrame(rocketLauncherAnimationId);
+        // Reset position immediately
+        rocketLauncherModel.position.copy(ROCKET_LAUNCHER_IDLE_POSITION);
+        rocketLauncherModel.rotation.copy(ROCKET_LAUNCHER_IDLE_ROTATION);
+    }
+    
+    rocketLauncherReloading = true;
+    rocketLauncherAnimationInProgress = true;
+    showNotification("Reloading rocket launcher...", 3000);
+    
+    // Animation constants
+    const totalDuration = 3000; // 3 seconds reload time
+    const startTime = performance.now();
+    
+    function animate() {
+        const now = performance.now();
+        const elapsed = now - startTime;
+        
+        if (elapsed < totalDuration) {
+            const progress = elapsed / totalDuration;
+            
+            // Reload animation in three phases
+            if (progress < 0.3) {
+                // First phase - lower weapon to load
+                const phaseProgress = progress / 0.3;
+                rocketLauncherModel.rotation.x = ROCKET_LAUNCHER_IDLE_ROTATION.x + (Math.PI / 8 * phaseProgress);
+                rocketLauncherModel.position.y = ROCKET_LAUNCHER_IDLE_POSITION.y - (0.1 * phaseProgress);
+            } else if (progress < 0.7) {
+                // Second phase - loading new rocket
+                const phaseProgress = (progress - 0.3) / 0.4;
+                rocketLauncherModel.rotation.x = ROCKET_LAUNCHER_IDLE_ROTATION.x + Math.PI / 8;
+                rocketLauncherModel.position.y = ROCKET_LAUNCHER_IDLE_POSITION.y - 0.1;
+                
+                // Rotate slightly to simulate inserting new rocket
+                rocketLauncherModel.rotation.z = ROCKET_LAUNCHER_IDLE_ROTATION.z + (Math.PI / 12 * Math.sin(phaseProgress * Math.PI));
+            } else {
+                // Final phase - return to position
+                const phaseProgress = (progress - 0.7) / 0.3;
+                rocketLauncherModel.rotation.x = ROCKET_LAUNCHER_IDLE_ROTATION.x + (Math.PI / 8 * (1 - phaseProgress));
+                rocketLauncherModel.position.y = ROCKET_LAUNCHER_IDLE_POSITION.y - (0.1 * (1 - phaseProgress));
+                rocketLauncherModel.rotation.z = ROCKET_LAUNCHER_IDLE_ROTATION.z;
+            }
+            
+            rocketLauncherAnimationId = requestAnimationFrame(animate);
+        } else {
+            // Reset to exact original values
+            rocketLauncherModel.position.copy(ROCKET_LAUNCHER_IDLE_POSITION);
+            rocketLauncherModel.rotation.copy(ROCKET_LAUNCHER_IDLE_ROTATION);
+            
+            // Reload complete
+            rocketLauncherAmmo = rocketLauncherMaxAmmo;
+            rocketLauncherReloading = false;
+            updateAmmoDisplay();
+            
+            // Show loaded rocket again
+            updateRocketLauncherDisplay();
+            
+            // Clear animation state
+            rocketLauncherAnimationInProgress = false;
+            rocketLauncherAnimationId = null;
+        }
+    }
+    
+    rocketLauncherAnimationId = requestAnimationFrame(animate);
+}
+
+function createCrossbowModel() {
+    if (crossbowModel) {
+        camera.remove(crossbowModel);
+    }
+    
+    // Create crossbow group
+    crossbowModel = new THREE.Group();
+    
+    // Create main body (handle and stock)
+    const bodyGeometry = new THREE.BoxGeometry(0.08, 0.25, 0.7);
+    const bodyMaterial = new THREE.MeshStandardMaterial({
+        color: 0x5c2e00, // Wood color
+        roughness: 0.7,
+        metalness: 0.1
+    });
+    const body = new THREE.Mesh(bodyGeometry, bodyMaterial);
+    body.castShadow = true;
+    body.receiveShadow = true;
+    crossbowModel.add(body);
+    
+    // Create crossbow arms (horizontal bar)
+    const armsGeometry = new THREE.BoxGeometry(0.6, 0.04, 0.04);
+    const armsMaterial = new THREE.MeshStandardMaterial({
+        color: 0x444444, // Metal color
+        roughness: 0.4,
+        metalness: 0.8
+    });
+    const arms = new THREE.Mesh(armsGeometry, armsMaterial);
+    arms.position.set(0, 0, 0.34); // Position at front end
+    arms.castShadow = true;
+    arms.receiveShadow = true;
+    crossbowModel.add(arms);
+    
+    // Create bow string (curved)
+    const stringCurve = new THREE.QuadraticBezierCurve3(
+        new THREE.Vector3(-0.28, 0, 0.34),    // Left arm tip
+        new THREE.Vector3(0, 0, 0.2),         // Control point (pulled back slightly)
+        new THREE.Vector3(0.28, 0, 0.34)      // Right arm tip
+    );
+    
+    const stringGeometry = new THREE.TubeGeometry(
+        stringCurve,
+        8,    // tubular segments
+        0.005, // radius
+        8,    // radial segments
+        false  // closed
+    );
+    
+    const stringMaterial = new THREE.MeshBasicMaterial({
+        color: 0xeeeeee
+    });
+    
+    const string = new THREE.Mesh(stringGeometry, stringMaterial);
+    string.castShadow = true;
+    crossbowModel.add(string);
+    
+    // Create arrow rail/guide
+    const railGeometry = new THREE.BoxGeometry(0.04, 0.02, 0.6);
+    const railMaterial = new THREE.MeshStandardMaterial({
+        color: 0x333333,
+        roughness: 0.5,
+        metalness: 0.6
+    });
+    const rail = new THREE.Mesh(railGeometry, railMaterial);
+    rail.position.set(0, 0.02, 0.1); // Position along the body
+    rail.castShadow = true;
+    rail.receiveShadow = true;
+    crossbowModel.add(rail);
+    
+    // Create loaded arrow (visible when ammo > 0)
+    const arrowGeometry = new THREE.CylinderGeometry(0.01, 0.01, 0.6, 8);
+    const arrowMaterial = new THREE.MeshStandardMaterial({
+        color: 0x5c2e00, // Wood shaft
+        roughness: 0.6,
+        metalness: 0.2
+    });
+    const arrow = new THREE.Mesh(arrowGeometry, arrowMaterial);
+    arrow.rotation.x = Math.PI / 2; // Align horizontally
+    arrow.position.set(0, 0.03, 0.1); // Position along the rail
+    arrow.castShadow = true;
+    arrow.receiveShadow = true;
+    crossbowModel.userData.loadedArrow = arrow; // Store reference to toggle visibility
+    crossbowModel.add(arrow);
+    
+    // Create arrow tip
+    const tipGeometry = new THREE.ConeGeometry(0.02, 0.08, 8);
+    const tipMaterial = new THREE.MeshStandardMaterial({
+        color: 0x777777, // Metal tip
+        roughness: 0.3,
+        metalness: 0.9
+    });
+    const tip = new THREE.Mesh(tipGeometry, tipMaterial);
+    tip.rotation.x = Math.PI / 2; // Align horizontally
+    tip.position.set(0, 0, 0.32); // Position at the front of the arrow
+    arrow.add(tip);
+    
+    // Create arrow fletching (feathers) - FIXING THE POSITION AND ROTATION HERE
+    const fletchingGeometry = new THREE.BoxGeometry(0.04, 0.1, 0.01);
+    const fletchingMaterial = new THREE.MeshStandardMaterial({
+        color: 0xdd0000, // Red feathers
+        roughness: 0.8,
+        metalness: 0.1
+    });
+    
+    // First fletching piece - vertical
+    const fletching1 = new THREE.Mesh(fletchingGeometry, fletchingMaterial);
+    fletching1.position.set(0, 0, -0.1); // Position at the back of the arrow
+    fletching1.position.y = -0.1; // Position lower on the shaft
+    fletching1.rotation.z = Math.PI / 2; // Make it straight up/down
+    arrow.add(fletching1);
+    
+    // Second fletching piece - horizontal
+    const fletching2 = new THREE.Mesh(fletchingGeometry, fletchingMaterial);
+    fletching2.position.set(0, 0, -0.1); // Same position at back of arrow
+    fletching2.position.y = -0.1; // Same lower position
+    fletching2.rotation.x = Math.PI / 2; // Make it horizontal, crossing the first one
+    arrow.add(fletching2);
+    
+    // Position the crossbow in view
+    crossbowModel.position.copy(CROSSBOW_IDLE_POSITION);
+    crossbowModel.rotation.copy(CROSSBOW_IDLE_ROTATION);
+    
+    // Add a dedicated light for better visibility
+    const crossbowLight = new THREE.PointLight(0xffffff, 1.5, 1);
+    crossbowLight.position.set(0, 0, -0.2);
+    crossbowModel.add(crossbowLight);
+    
+    camera.add(crossbowModel);
+    console.log("Crossbow model created");
+    
+    // Update loaded arrow visibility based on ammo
+    updateCrossbowArrowVisibility();
+    
+    crossbowModel.visible = (inventory[selectedSlot] === WEAPON_TYPES.CROSSBOW);
+    return crossbowModel;
+}
+
+// Function to update the visibility of the loaded arrow
+function updateCrossbowArrowVisibility() {
+    if (crossbowModel && crossbowModel.userData.loadedArrow) {
+        crossbowModel.userData.loadedArrow.visible = (crossbowAmmo > 0);
+    }
+}
+
+function fireCrossbow() {
+    if (crossbowReloading) return;
+    
+    if (crossbowAmmo <= 0) {
+        // Auto reload when empty
+        animateCrossbowReload();
+        return;
+    }
+    
+    // Decrement ammo
+    crossbowAmmo--;
+    updateAmmoDisplay();
+    
+    // Update arrow visibility
+    updateCrossbowArrowVisibility();
+    
+    // Play firing animation
+    animateCrossbowFire();
+    
+    // Create arrow projectile
+    createCrossbowBolt();
+    
+    // Auto reload if empty
+    if (crossbowAmmo === 0) {
+        setTimeout(animateCrossbowReload, 300);
+    }
+}
+
+function createCrossbowBolt() {
+    // Create bolt group to hold all parts
+    const bolt = new THREE.Group();
+    
+    // Create shaft geometry
+    const shaftGeometry = new THREE.CylinderGeometry(0.01, 0.01, 0.5, 8);
+    const shaftMaterial = new THREE.MeshStandardMaterial({ 
+        color: 0x5c2e00, // Wood color
+        roughness: 0.6,
+        metalness: 0.2
+    });
+    
+    const shaft = new THREE.Mesh(shaftGeometry, shaftMaterial);
+    // Rotate shaft to align with forward direction
+    shaft.rotation.x = Math.PI / 2;
+    bolt.add(shaft);
+    
+    // Add tip to arrow
+    const tipGeometry = new THREE.ConeGeometry(0.02, 0.08, 8);
+    const tipMaterial = new THREE.MeshStandardMaterial({
+        color: 0x777777, // Metal color
+        roughness: 0.3,
+        metalness: 0.9
+    });
+    
+    const tip = new THREE.Mesh(tipGeometry, tipMaterial);
+    tip.rotation.x = Math.PI / 2;
+    tip.position.z = -0.29; // Position at front of bolt
+    bolt.add(tip);
+    
+    // Add fletching (feathers) - FIXING POSITION AND ROTATION HERE
+    const fletchingGeometry = new THREE.BoxGeometry(0.04, 0.1, 0.01);
+    const fletchingMaterial = new THREE.MeshStandardMaterial({
+        color: 0xdd0000, // Red color
+        roughness: 0.8,
+        metalness: 0.1
+    });
+    
+    // First fletching piece - straight vertical
+    const fletching1 = new THREE.Mesh(fletchingGeometry, fletchingMaterial);
+    fletching1.position.z = 0.24; // Position at back of bolt
+    fletching1.position.y = -0.05; // Position LOWER on the bolt (changed from -0.02 to -0.05)
+    fletching1.rotation.z = Math.PI / 2; // Make it straight up/down (changed from rotation.x to rotation.z)
+    bolt.add(fletching1);
+    
+    // Second fletching piece - horizontal, crossing the vertical one
+    const fletching2 = new THREE.Mesh(fletchingGeometry, fletchingMaterial);
+    fletching2.position.z = 0.24; // Position at back of bolt
+    fletching2.position.y = -0.05; // Position LOWER on the bolt (changed from -0.02 to -0.05)
+    fletching2.rotation.x = Math.PI / 2; // Keep this rotation to make it horizontal
+    bolt.add(fletching2);
+    
+    // Add shadow casting
+    shaft.castShadow = true;
+    tip.castShadow = true;
+    fletching1.castShadow = true;
+    fletching2.castShadow = true;
+    
+    // Get camera position and direction
+    const cameraPosition = new THREE.Vector3();
+    camera.getWorldPosition(cameraPosition);
+    
+    const cameraDirection = new THREE.Vector3(0, 0, -1);
+    camera.getWorldDirection(cameraDirection);
+    
+    // Position bolt at crossbow
+    bolt.position.copy(cameraPosition).addScaledVector(cameraDirection, 0.7);
+    
+    // Orient bolt to fly in camera direction
+    bolt.lookAt(cameraPosition.clone().add(cameraDirection));
+    
+    // Add bolt data
+    bolt.userData = {
+        direction: cameraDirection.clone(),
+        speed: 3.0, // Faster than bullets
+        damage: 20, // High damage for 2-hit kills on normal enemies
+        lifetime: 2000, // Longer lifetime
+        spawnTime: performance.now(),
+        isCrossbowBolt: true
+    };
+    
+    scene.add(bolt);
+    bullets.push(bolt); // Add to bullets array for tracking
+    
+    return bolt;
+}
+
+function animateCrossbowFire() {
+    if (!crossbowModel || crossbowReloading) return;
+    
+    // Force cancel any ongoing animation
+    if (crossbowAnimationInProgress) {
+        cancelAnimationFrame(crossbowAnimationId);
+        // Reset position immediately
+        crossbowModel.position.copy(CROSSBOW_IDLE_POSITION);
+        crossbowModel.rotation.copy(CROSSBOW_IDLE_ROTATION);
+    }
+    
+    // Mark animation as in progress
+    crossbowAnimationInProgress = true;
+    
+    // Animation constants for recoil
+    const recoilDuration = 100; // milliseconds
+    const returnDuration = 200; // milliseconds
+    
+    // Start time
+    const startTime = performance.now();
+    
+    function animate() {
+        const now = performance.now();
+        const elapsed = now - startTime;
+        
+        if (elapsed < recoilDuration) {
+            // Recoil motion
+            const progress = elapsed / recoilDuration;
+            crossbowModel.position.z = CROSSBOW_IDLE_POSITION.z + (0.15 * progress);
+            crossbowModel.position.y = CROSSBOW_IDLE_POSITION.y + (0.04 * progress);
+            crossbowModel.rotation.x = CROSSBOW_IDLE_ROTATION.x - (Math.PI / 20 * progress);
+            crossbowAnimationId = requestAnimationFrame(animate);
+        } else if (elapsed < recoilDuration + returnDuration) {
+            // Return motion
+            const returnProgress = (elapsed - recoilDuration) / returnDuration;
+            crossbowModel.position.z = CROSSBOW_IDLE_POSITION.z + (0.15 * (1 - returnProgress));
+            crossbowModel.position.y = CROSSBOW_IDLE_POSITION.y + (0.04 * (1 - returnProgress));
+            crossbowModel.rotation.x = CROSSBOW_IDLE_ROTATION.x - (Math.PI / 20 * (1 - returnProgress));
+            crossbowAnimationId = requestAnimationFrame(animate);
+        } else {
+            // Reset to exact original values
+            crossbowModel.position.copy(CROSSBOW_IDLE_POSITION);
+            crossbowModel.rotation.copy(CROSSBOW_IDLE_ROTATION);
+            
+            // Clear animation state
+            crossbowAnimationInProgress = false;
+            crossbowAnimationId = null;
+        }
+    }
+    
+    crossbowAnimationId = requestAnimationFrame(animate);
+}
+
+function animateCrossbowReload() {
+    if (!crossbowModel || crossbowReloading) return;
+    
+    // Force cancel any ongoing animation
+    if (crossbowAnimationInProgress) {
+        cancelAnimationFrame(crossbowAnimationId);
+        // Reset position immediately
+        crossbowModel.position.copy(CROSSBOW_IDLE_POSITION);
+        crossbowModel.rotation.copy(CROSSBOW_IDLE_ROTATION);
+    }
+    
+    crossbowReloading = true;
+    crossbowAnimationInProgress = true;
+    showNotification("Reloading crossbow...", 1800);
+    
+    // Animation constants
+    const totalDuration = 1800; // 1.8 seconds reload time
+    const startTime = performance.now();
+    
+    // Hide the loaded arrow during reload
+    if (crossbowModel.userData.loadedArrow) {
+        crossbowModel.userData.loadedArrow.visible = false;
+    }
+    
+    function animate() {
+        const now = performance.now();
+        const elapsed = now - startTime;
+        
+        if (elapsed < totalDuration) {
+            const progress = elapsed / totalDuration;
+            
+            // Reloading animation in three phases
+            if (progress < 0.33) {
+                // First phase - tilt down to load arrow
+                const phaseProgress = progress / 0.33;
+                crossbowModel.rotation.x = CROSSBOW_IDLE_ROTATION.x + (Math.PI / 10 * phaseProgress);
+                crossbowModel.position.y = CROSSBOW_IDLE_POSITION.y - (0.05 * phaseProgress);
+            } else if (progress < 0.66) {
+                // Second phase - draw the string back
+                const phaseProgress = (progress - 0.33) / 0.33;
+                crossbowModel.rotation.x = CROSSBOW_IDLE_ROTATION.x + (Math.PI / 10);
+                crossbowModel.position.y = CROSSBOW_IDLE_POSITION.y - 0.05;
+                
+                // Pulling motion
+                crossbowModel.position.z = CROSSBOW_IDLE_POSITION.z - (0.1 * phaseProgress);
+            } else {
+                // Final phase - return to position
+                const phaseProgress = (progress - 0.66) / 0.34;
+                crossbowModel.rotation.x = CROSSBOW_IDLE_ROTATION.x + (Math.PI / 10 * (1 - phaseProgress));
+                crossbowModel.position.y = CROSSBOW_IDLE_POSITION.y - (0.05 * (1 - phaseProgress));
+                crossbowModel.position.z = CROSSBOW_IDLE_POSITION.z - (0.1 * (1 - phaseProgress));
+            }
+            
+            crossbowAnimationId = requestAnimationFrame(animate);
+        } else {
+            // Reset to exact original values
+            crossbowModel.position.copy(CROSSBOW_IDLE_POSITION);
+            crossbowModel.rotation.copy(CROSSBOW_IDLE_ROTATION);
+            
+            // Reload complete
+            crossbowAmmo = crossbowMaxAmmo;
+            crossbowReloading = false;
+            updateAmmoDisplay();
+            
+            // Show loaded arrow again
+            updateCrossbowArrowVisibility();
+            
+            // Clear animation state
+            crossbowAnimationInProgress = false;
+            crossbowAnimationId = null;
+        }
+    }
+    
+    crossbowAnimationId = requestAnimationFrame(animate);
+}
+
+function createMinigunModel() {
+    if (minigunModel) {
+        camera.remove(minigunModel);
+    }
+    
+    // Create minigun group
+    minigunModel = new THREE.Group();
+    
+    // Create main body
+    const bodyGeometry = new THREE.CylinderGeometry(0.12, 0.12, 0.6, 12);
+    const bodyMaterial = new THREE.MeshStandardMaterial({
+        color: 0x333333,
+        roughness: 0.3,
+        metalness: 0.8
+    });
+    const body = new THREE.Mesh(bodyGeometry, bodyMaterial);
+    body.rotation.z = Math.PI/2; // Lay horizontally
+    body.position.set(0, 0, 0);
+    body.castShadow = true;
+    body.receiveShadow = true;
+    minigunModel.add(body);
+    
+    // Create handle
+    const handleGeometry = new THREE.BoxGeometry(0.08, 0.25, 0.1);
+    const handleMaterial = new THREE.MeshStandardMaterial({
+        color: 0x222222,
+        roughness: 0.5,
+        metalness: 0.7
+    });
+    const handle = new THREE.Mesh(handleGeometry, handleMaterial);
+    handle.position.set(0, -0.2, -0.15);
+    handle.castShadow = true;
+    handle.receiveShadow = true;
+    minigunModel.add(handle);
+    
+    // Create rotating barrel group
+    const barrelGroup = new THREE.Group();
+    barrelGroup.position.set(0, 0, 0.3);
+    minigunModel.add(barrelGroup);
+    minigunModel.userData.barrelGroup = barrelGroup;
+    
+    // Create multiple barrels in a circular pattern
+    const barrelCount = 6;
+    const barrelRadius = 0.08;
+    const barrelLength = 0.8;
+    const barrelGeometry = new THREE.CylinderGeometry(0.03, 0.03, barrelLength, 8);
+    const barrelMaterial = new THREE.MeshStandardMaterial({
+        color: 0x444444,
+        roughness: 0.2,
+        metalness: 0.9
+    });
+    
+    for (let i = 0; i < barrelCount; i++) {
+        const angle = (i / barrelCount) * Math.PI * 2;
+        const barrel = new THREE.Mesh(barrelGeometry, barrelMaterial);
+        barrel.position.set(
+            Math.cos(angle) * barrelRadius,
+            Math.sin(angle) * barrelRadius,
+            barrelLength/2
+        );
+        barrel.rotation.x = Math.PI/2; // Point forward
+        barrel.castShadow = true;
+        barrel.receiveShadow = true;
+        barrelGroup.add(barrel);
+    }
+    
+    // Create barrel housing
+    const housingGeometry = new THREE.CylinderGeometry(0.12, 0.12, 0.2, 12);
+    const housingMaterial = new THREE.MeshStandardMaterial({
+        color: 0x333333,
+        roughness: 0.3,
+        metalness: 0.8
+    });
+    const housing = new THREE.Mesh(housingGeometry, housingMaterial);
+    housing.rotation.x = Math.PI/2;
+    housing.position.set(0, 0, 0.1);
+    minigunModel.add(housing);
+    
+    // Create ammunition belt/box
+    const ammoBoxGeometry = new THREE.BoxGeometry(0.2, 0.15, 0.25);
+    const ammoBoxMaterial = new THREE.MeshStandardMaterial({
+        color: 0x444444,
+        roughness: 0.5,
+        metalness: 0.7
+    });
+    const ammoBox = new THREE.Mesh(ammoBoxGeometry, ammoBoxMaterial);
+    ammoBox.position.set(0.15, -0.1, -0.2);
+    minigunModel.add(ammoBox);
+    
+    // Add a second grip at the front
+    const frontGripGeometry = new THREE.BoxGeometry(0.05, 0.1, 0.05);
+    const frontGrip = new THREE.Mesh(frontGripGeometry, handleMaterial);
+    frontGrip.position.set(0, -0.1, 0.2);
+    minigunModel.add(frontGrip);
+    
+    // Add heat indicators (will glow red when overheating)
+    const heatIndicatorGeometry = new THREE.BoxGeometry(0.03, 0.03, 0.15);
+    const heatIndicatorMaterial = new THREE.MeshStandardMaterial({
+        color: 0x00ff00,
+        emissive: 0x00ff00,
+        emissiveIntensity: 0.5
+    });
+    const heatIndicator = new THREE.Mesh(heatIndicatorGeometry, heatIndicatorMaterial);
+    heatIndicator.position.set(0.06, 0.1, -0.1);
+    minigunModel.add(heatIndicator);
+    minigunModel.userData.heatIndicator = heatIndicator;
+    
+    // Add a dedicated light for better visibility
+    const minigunLight = new THREE.PointLight(0xffffff, 1.5, 1);
+    minigunLight.position.set(0, 0, -0.2);
+    minigunModel.add(minigunLight);
+    
+    // Position the minigun in view
+    minigunModel.position.copy(MINIGUN_IDLE_POSITION);
+    minigunModel.rotation.copy(MINIGUN_IDLE_ROTATION);
+    
+    camera.add(minigunModel);
+    console.log("Minigun model created");
+    
+    minigunModel.visible = (inventory[selectedSlot] === WEAPON_TYPES.MINIGUN);
+    return minigunModel;
+}
+
+function fireMinigun() {
+    if (minigunReloading) return;
+    
+    // If not spinning yet, start spinning
+    if (!minigunSpinning) {
+        startMinigunSpin();
+        return; // Don't fire until spinning
+    }
+    
+    // Check ammo - FIXED RELOAD HANDLING
+    if (minigunAmmo <= 0) {
+        // Stop spinning and force reload when empty
+        stopMinigunSpin();
+        
+        // Force clear any existing animation or reload state
+        if (minigunAnimationInProgress) {
+            cancelAnimationFrame(minigunAnimationId);
+            minigunAnimationInProgress = false;
+            minigunAnimationId = null;
+        }
+        
+        // Make sure the reloading flag is properly reset
+        minigunReloading = false;
+        
+        // Now trigger reload
+        animateMinigunReload();
+        return;
+    }
+    
+    // Only fire when at full spin
+    if (minigunSpinSpeed < 1) return;
+    
+    // Decrement ammo
+    minigunAmmo--;
+    updateAmmoDisplay();
+    
+    // Reduce heat increase from 0.02 to 0.01 to allow 100 shots before overheating
+    minigunHeatLevel = Math.min(1, minigunHeatLevel + 0.01);
+    updateMinigunHeat();
+    
+    // Play firing animation
+    animateMinigunFire();
+    
+    // Create bullet with increasing spread based on heat
+    createMinigunBullet();
+    
+    // Create muzzle flash effect for visual feedback
+    createMuzzleFlash(camera);
+    
+    // Auto reload when empty
+    if (minigunAmmo === 0) {
+        setTimeout(() => {
+            // Make sure we're not in the middle of another operation
+            if (!minigunReloading && !minigunAnimationInProgress) {
+                animateMinigunReload();
+            }
+        }, 300);
+    }
+}
+
+function startMinigunSpin() {
+    // Reset spin state to begin fresh spin-up
+    minigunSpinning = true;
+    minigunSpinSpeed = 0;
+    
+    // Clear any existing timeouts
+    if (minigunSpinTimeout) {
+        clearTimeout(minigunSpinTimeout);
+        minigunSpinTimeout = null;
+    }
+    
+    // Clear any existing firing intervals
+    if (minigunFireInterval) {
+        clearInterval(minigunFireInterval);
+        minigunFireInterval = null;
+    }
+    
+    // Schedule firing to start after full spin-up
+    setTimeout(() => {
+        // Only start firing if still spinning AND mouse still down
+        if (minigunSpinning && mouseIsDown) {
+            minigunFireInterval = setInterval(() => {
+                // Check if we're still allowed to fire
+                if (mouseIsDown && minigunSpinning && !minigunReloading) {
+                    fireMinigun();
+                } else {
+                    // If conditions no longer met, clear the interval
+                    clearInterval(minigunFireInterval);
+                    minigunFireInterval = null;
+                }
+            }, 70);
+        }
+    }, 1000); // 1 second spin-up time
+}
+
+function stopMinigunSpin() {
+    // Set both flags to ensure firing stops
+    minigunSpinning = false;
+    mouseIsDown = false;
+    
+    // Clear firing interval immediately
+    if (minigunFireInterval) {
+        clearInterval(minigunFireInterval);
+        minigunFireInterval = null;
+    }
+    
+    // Clear any existing spin down timeout
+    if (minigunSpinTimeout) {
+        clearTimeout(minigunSpinTimeout);
+        minigunSpinTimeout = null;
+    }
+    
+    // Schedule cooldown to start after spin-down animation completes
+    minigunSpinTimeout = setTimeout(() => {
+        startMinigunCooldown();
+        
+        // Make sure spin speed is completely reset to zero
+        minigunSpinSpeed = 0;
+    }, 1500);
+}
+
+function startMinigunCooldown() {
+    if (minigunHeatLevel <= 0) return;
+    
+    const cooldownInterval = setInterval(() => {
+        if (!minigunModel) {
+            clearInterval(cooldownInterval);
+            return;
+        }
+        
+        // Reduce heat
+        minigunHeatLevel = Math.max(0, minigunHeatLevel - 0.05);
+        updateMinigunHeat();
+        
+        // Clear interval when fully cooled
+        if (minigunHeatLevel <= 0) {
+            clearInterval(cooldownInterval);
+        }
+    }, 200);
+}
+
+function createMinigunBullet() {
+    // Use smaller bullet geometry to reduce memory usage
+    const bulletGeometry = new THREE.SphereGeometry(0.015, 6, 6);  // Smaller and simpler geometry
+    const bulletMaterial = new THREE.MeshBasicMaterial({ color: 0xffaa00 });
+    const bullet = new THREE.Mesh(bulletGeometry, bulletMaterial);
+    
+    // Add shadow casting to bullet
+    bullet.castShadow = true;
+    
+    // Get camera position and direction
+    const cameraPosition = new THREE.Vector3();
+    camera.getWorldPosition(cameraPosition);
+    
+    const cameraDirection = new THREE.Vector3(0, 0, -1);
+    camera.getWorldDirection(cameraDirection);
+    
+    // Apply increasing spread based on heat level
+    const spreadFactor = 0.02 * minigunHeatLevel;
+    const randomSpreadX = (Math.random() - 0.5) * spreadFactor;
+    const randomSpreadY = (Math.random() - 0.5) * spreadFactor;
+    
+    // Create a rotation matrix for the spread
+    const rotationMatrix = new THREE.Matrix4().makeRotationY(randomSpreadX);
+    rotationMatrix.multiply(new THREE.Matrix4().makeRotationX(randomSpreadY));
+    
+    // Apply rotation to direction
+    const spreadDirection = cameraDirection.clone().applyMatrix4(rotationMatrix).normalize();
+    
+    // Position bullet at gun barrel with slight offset for current barrel position
+    const barrelOffset = new THREE.Vector3(
+        (Math.random() - 0.5) * 0.1, 
+        (Math.random() - 0.5) * 0.1,
+        0
+    );
+    bullet.position.copy(cameraPosition).addScaledVector(cameraDirection, 0.8).add(barrelOffset);
+    
+    // Orient bullet
+    bullet.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), spreadDirection);
+    
+    // Add bullet data with SHORTER lifetime to reduce active bullets
+    bullet.userData = {
+        direction: spreadDirection,
+        speed: 3.0, // Fast bullets
+        damage: 8, // Lower damage per bullet but high rate of fire
+        lifetime: 500, // REDUCED from 1000ms to 500ms lifetime
+        spawnTime: performance.now()
+    };
+    
+    scene.add(bullet);
+    bullets.push(bullet);
+    
+    return bullet;
+}
+
+function animateMinigunFire() {
+    if (!minigunModel) return;
+    
+    // Subtle recoil effect
+    const kickbackAmount = 0.02;
+    const returnSpeed = 0.1;
+    
+    // Apply recoil - move slightly back
+    minigunModel.position.z += kickbackAmount;
+    
+    // Return to original position gradually
+    setTimeout(() => {
+        if (minigunModel) {
+            minigunModel.position.z = THREE.MathUtils.lerp(
+                minigunModel.position.z, 
+                MINIGUN_IDLE_POSITION.z, 
+                returnSpeed
+            );
+        }
+    }, 30);
+    
+    // Add screen shake proportional to heat level
+    addScreenShake(0.05 + minigunHeatLevel * 0.1, 50);
+}
+
+function animateMinigunReload() {
+    if (!minigunModel) return;
+    
+    // If already reloading, don't start another reload animation
+    if (minigunReloading) return;
+    
+    // Force stop spinning
+    minigunSpinning = false;
+    if (minigunFireInterval) {
+        clearInterval(minigunFireInterval);
+        minigunFireInterval = null;
+    }
+    
+    // Set states properly
+    minigunReloading = true;
+    minigunAnimationInProgress = true;
+    showNotification("Reloading minigun...", 3000);
+    
+    // Animation constants
+    const totalDuration = 3000; // 3 seconds reload time
+    const startTime = performance.now();
+    
+    function animate() {
+        const now = performance.now();
+        const elapsed = now - startTime;
+        
+        if (elapsed < totalDuration) {
+            const progress = elapsed / totalDuration;
+            
+            // Reload animation
+            if (progress < 0.3) {
+                // First stage - tilt down
+                const stageProgress = progress / 0.3;
+                minigunModel.rotation.x = MINIGUN_IDLE_ROTATION.x + (Math.PI / 12 * stageProgress);
+            } else if (progress < 0.6) {
+                // Second stage - change ammo belt
+                const stageProgress = (progress - 0.3) / 0.3;
+                minigunModel.rotation.z = MINIGUN_IDLE_ROTATION.z - (Math.PI / 8 * Math.sin(stageProgress * Math.PI));
+            } else {
+                // Final stage - return to position
+                const stageProgress = (progress - 0.6) / 0.4;
+                minigunModel.rotation.x = MINIGUN_IDLE_ROTATION.x + (Math.PI / 12 * (1 - stageProgress));
+                minigunModel.rotation.z = MINIGUN_IDLE_ROTATION.z;
+            }
+            
+            minigunAnimationId = requestAnimationFrame(animate);
+        } else {
+            // Reset to exact original values
+            minigunModel.position.copy(MINIGUN_IDLE_POSITION);
+            minigunModel.rotation.copy(MINIGUN_IDLE_ROTATION);
+            
+            // Reload complete
+            minigunAmmo = minigunMaxAmmo;
+            minigunReloading = false;
+            updateAmmoDisplay();
+            
+            // Clear animation state
+            minigunAnimationInProgress = false;
+            minigunAnimationId = null;
+        }
+    }
+    
+    minigunAnimationId = requestAnimationFrame(animate);
+}
+
+function createSniperRifleModel() {
+    if (sniperRifleModel) {
+        camera.remove(sniperRifleModel);
+    }
+    
+    // Create sniper rifle group
+    sniperRifleModel = new THREE.Group();
+    
+    // Create rifle body
+    const bodyGeometry = new THREE.BoxGeometry(0.1, 0.15, 0.9);
+    const bodyMaterial = new THREE.MeshStandardMaterial({
+        color: 0x222222,
+        roughness: 0.3,
+        metalness: 0.8
+    });
+    const body = new THREE.Mesh(bodyGeometry, bodyMaterial);
+    body.castShadow = true;
+    body.receiveShadow = true;
+    sniperRifleModel.add(body);
+    
+    // Create rifle barrel (long)
+    const barrelGeometry = new THREE.CylinderGeometry(0.03, 0.03, 1.2, 16);
+    const barrelMaterial = new THREE.MeshStandardMaterial({
+        color: 0x444444,
+        roughness: 0.2,
+        metalness: 0.9
+    });
+    const barrel = new THREE.Mesh(barrelGeometry, barrelMaterial);
+    barrel.rotation.x = Math.PI / 2;
+    barrel.position.set(0, 0.03, 0.6);
+    barrel.castShadow = true;
+    barrel.receiveShadow = true;
+    sniperRifleModel.add(barrel);
+    
+    // Create rifle handle/grip
+    const handleGeometry = new THREE.BoxGeometry(0.08, 0.25, 0.1);
+    const handleMaterial = new THREE.MeshStandardMaterial({
+        color: 0x5c2e00, // Brown wooden stock
+        roughness: 0.7,
+        metalness: 0.1
+    });
+    const handle = new THREE.Mesh(handleGeometry, handleMaterial);
+    handle.position.set(0, -0.2, -0.2);
+    handle.castShadow = true;
+    handle.receiveShadow = true;
+    sniperRifleModel.add(handle);
+    
+    // Create rifle stock
+    const stockGeometry = new THREE.BoxGeometry(0.08, 0.15, 0.4);
+    const stockMaterial = new THREE.MeshStandardMaterial({
+        color: 0x5c2e00, // Brown wooden stock
+        roughness: 0.7,
+        metalness: 0.1
+    });
+    const stock = new THREE.Mesh(stockGeometry, stockMaterial);
+    stock.position.set(0, -0.05, -0.4);
+    stock.castShadow = true;
+    stock.receiveShadow = true;
+    sniperRifleModel.add(stock);
+    
+    // Create scope
+    const scopeGeometry = new THREE.CylinderGeometry(0.05, 0.05, 0.25, 16);
+    const scopeMaterial = new THREE.MeshStandardMaterial({
+        color: 0x222222,
+        roughness: 0.5,
+        metalness: 0.8
+    });
+    const scope = new THREE.Mesh(scopeGeometry, scopeMaterial);
+    scope.position.set(0, 0.12, 0.1);
+    scope.rotation.x = Math.PI / 2;
+    scope.castShadow = true;
+    scope.receiveShadow = true;
+    sniperRifleModel.add(scope);
+    
+    // Create scope lens (front)
+    const lensGeometry = new THREE.CircleGeometry(0.04, 16);
+    const lensMaterial = new THREE.MeshStandardMaterial({
+        color: 0x88ccff,
+        roughness: 0.2,
+        metalness: 0.9,
+        emissive: 0x113355,
+        emissiveIntensity: 0.3
+    });
+    const frontLens = new THREE.Mesh(lensGeometry, lensMaterial);
+    frontLens.position.set(0, 0.12, 0.23);
+    frontLens.rotation.y = Math.PI;
+    sniperRifleModel.add(frontLens);
+    
+    // Position the rifle in view
+    sniperRifleModel.position.copy(SNIPER_RIFLE_IDLE_POSITION);
+    sniperRifleModel.rotation.copy(SNIPER_RIFLE_IDLE_ROTATION);
+    
+    // Add a dedicated light
+    const rifleLight = new THREE.PointLight(0xffffff, 1.5, 1);
+    rifleLight.position.set(0, 0, -0.2);
+    sniperRifleModel.add(rifleLight);
+    
+    camera.add(sniperRifleModel);
+    console.log("Sniper rifle model created");
+    
+    sniperRifleModel.visible = (inventory[selectedSlot] === WEAPON_TYPES.SNIPER_RIFLE);
+    return sniperRifleModel;
+}
+
+function fireSniperRifle() {
+    if (sniperRifleReloading) return;
+    
+    if (sniperRifleAmmo <= 0) {
+        // Auto reload when empty
+        animateSniperRifleReload();
+        return;
+    }
+    
+    // Decrement ammo
+    sniperRifleAmmo--;
+    updateAmmoDisplay();
+    
+    // Play firing animation
+    animateSniperRiflefire();
+    
+    // Create bullet with high accuracy
+    createSniperBullet();
+    
+    // Automatically begin reload after firing since it only has one shot
+    setTimeout(animateSniperRifleReload, 300);
+}
+
+function createSniperBullet() {
+    // Create bullet geometry
+    const bulletGeometry = new THREE.CylinderGeometry(0.03, 0.03, 0.12, 8);
+    const bulletMaterial = new THREE.MeshBasicMaterial({ color: 0xffff00 });
+    const bullet = new THREE.Mesh(bulletGeometry, bulletMaterial);
+    
+    // Add shadow casting to bullet
+    bullet.castShadow = true;
+    
+    // Get camera position and direction
+    const cameraPosition = new THREE.Vector3();
+    camera.getWorldPosition(cameraPosition);
+    
+    const cameraDirection = new THREE.Vector3(0, 0, -1);
+    camera.getWorldDirection(cameraDirection);
+    
+    // Position bullet at gun barrel
+    bullet.position.copy(cameraPosition).addScaledVector(cameraDirection, 1.0);
+    
+    // Orient bullet
+    bullet.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), cameraDirection);
+    
+    // Add bullet data - high damage, high speed, long range
+    bullet.userData = {
+        direction: cameraDirection.clone(),
+        speed: 4.0,
+        damage: 200,
+        lifetime: 3000,
+        spawnTime: performance.now(),
+        isSniperBullet: true, // Mark as sniper bullet for special handling
+        origin: cameraPosition.clone() // Store origin for raycasting
+    };
+    
+    scene.add(bullet);
+    bullets.push(bullet);
+    
+    // Add muzzle flash effect
+    createMuzzleFlash(camera);
+    
+    // For sniper rifles, also perform immediate raycast for better hit detection
+    performSniperRaycast(cameraPosition, cameraDirection, bullet.userData.damage);
+    
+    return bullet;
+}
+
+// New function for sniper raycasting
+function performSniperRaycast(origin, direction, damage) {
+    // Create a raycaster
+    const raycaster = new THREE.Raycaster(origin, direction, 0, 1000);
+    
+    // Create an array of meshes to check against
+    const targetMeshes = activeEnemies.map(enemy => {
+        // Store reference to enemy in the mesh for identification
+        enemy.userData.enemyReference = enemy;
+        return enemy;
+    });
+    
+    // Perform the raycast
+    const intersects = raycaster.intersectObjects(targetMeshes);
+    
+    if (intersects.length > 0) {
+        // Hit the first enemy in the path
+        const hitResult = intersects[0];
+        const hitEnemy = hitResult.object.userData.enemyReference;
+        
+        // Apply damage
+        damageEnemy(hitEnemy, damage);
+        
+        // Create hit effect at the exact hit point
+        createHitEffect(hitResult.point);
+        
+        // Show hit marker
+        showHitMarker();
+        
+        return true; // Hit something
+    }
+    
+    return false; // Didn't hit anything
+}
+
+function animateSniperRiflefire() {
+    if (!sniperRifleModel || sniperRifleReloading) return;
+    
+    // Force cancel any ongoing animation
+    if (sniperRifleAnimationInProgress) {
+        cancelAnimationFrame(sniperRifleAnimationId);
+        // Reset position immediately
+        sniperRifleModel.position.copy(SNIPER_RIFLE_IDLE_POSITION);
+        sniperRifleModel.rotation.copy(SNIPER_RIFLE_IDLE_ROTATION);
+    }
+    
+    // Mark animation as in progress
+    sniperRifleAnimationInProgress = true;
+    
+    // Animation constants - stronger recoil than other weapons
+    const recoilDuration = 150; // milliseconds
+    const returnDuration = 250; // milliseconds
+    
+    // Start time
+    const startTime = performance.now();
+    
+    // Add screen shake for powerful rifle
+    addScreenShake(0.3, 300);
+    
+    function animate() {
+        const now = performance.now();
+        const elapsed = now - startTime;
+        
+        if (elapsed < recoilDuration) {
+            // Recoil motion - stronger than other weapons
+            const progress = elapsed / recoilDuration;
+            sniperRifleModel.position.z = SNIPER_RIFLE_IDLE_POSITION.z + (0.3 * progress);
+            sniperRifleModel.position.y = SNIPER_RIFLE_IDLE_POSITION.y + (0.08 * progress);
+            sniperRifleModel.rotation.x = SNIPER_RIFLE_IDLE_ROTATION.x - (Math.PI / 18 * progress);
+            sniperRifleAnimationId = requestAnimationFrame(animate);
+        } else if (elapsed < recoilDuration + returnDuration) {
+            // Return motion
+            const returnProgress = (elapsed - recoilDuration) / returnDuration;
+            sniperRifleModel.position.z = SNIPER_RIFLE_IDLE_POSITION.z + (0.3 * (1 - returnProgress));
+            sniperRifleModel.position.y = SNIPER_RIFLE_IDLE_POSITION.y + (0.08 * (1 - returnProgress));
+            sniperRifleModel.rotation.x = SNIPER_RIFLE_IDLE_ROTATION.x - (Math.PI / 18 * (1 - returnProgress));
+            sniperRifleAnimationId = requestAnimationFrame(animate);
+        } else {
+            // Reset to exact original values
+            sniperRifleModel.position.copy(SNIPER_RIFLE_IDLE_POSITION);
+            sniperRifleModel.rotation.copy(SNIPER_RIFLE_IDLE_ROTATION);
+            
+            // Clear animation state
+            sniperRifleAnimationInProgress = false;
+            sniperRifleAnimationId = null;
+            
+            // If scoped, exit scope view after firing
+            if (isScoped) {
+                toggleScope();
+            }
+        }
+    }
+    
+    sniperRifleAnimationId = requestAnimationFrame(animate);
+}
+
+function animateSniperRifleReload() {
+    if (!sniperRifleModel || sniperRifleReloading) return;
+    
+    // Force cancel any ongoing animation
+    if (sniperRifleAnimationInProgress) {
+        cancelAnimationFrame(sniperRifleAnimationId);
+        // Reset position immediately
+        sniperRifleModel.position.copy(SNIPER_RIFLE_IDLE_POSITION);
+        sniperRifleModel.rotation.copy(SNIPER_RIFLE_IDLE_ROTATION);
+    }
+    
+    sniperRifleReloading = true;
+    sniperRifleAnimationInProgress = true;
+    showNotification("Reloading sniper rifle...", 2500);
+    
+    // Exit scope view if reloading while scoped
+    if (isScoped) {
+        toggleScope();
+    }
+    
+    // Animation constants
+    const totalDuration = 2500; // 2.5 seconds reload time (longer for sniper)
+    const startTime = performance.now();
+    
+    function animate() {
+        const now = performance.now();
+        const elapsed = now - startTime;
+        
+        if (elapsed < totalDuration) {
+            const progress = elapsed / totalDuration;
+            
+            // Reload animation
+            if (progress < 0.4) {
+                // First stage - tilt down to access bolt
+                const stageProgress = progress / 0.4;
+                sniperRifleModel.rotation.x = SNIPER_RIFLE_IDLE_ROTATION.x + (Math.PI / 8 * stageProgress);
+            } else if (progress < 0.6) {
+                // Second stage - pull bolt back
+                const stageProgress = (progress - 0.4) / 0.2;
+                sniperRifleModel.rotation.x = SNIPER_RIFLE_IDLE_ROTATION.x + Math.PI / 8;
+                sniperRifleModel.position.z = SNIPER_RIFLE_IDLE_POSITION.z - (0.15 * stageProgress);
+            } else if (progress < 0.8) {
+                // Third stage - push bolt forward
+                const stageProgress = (progress - 0.6) / 0.2;
+                sniperRifleModel.rotation.x = SNIPER_RIFLE_IDLE_ROTATION.x + Math.PI / 8;
+                sniperRifleModel.position.z = SNIPER_RIFLE_IDLE_POSITION.z - (0.15 * (1 - stageProgress));
+            } else {
+                // Final stage - return to position
+                const stageProgress = (progress - 0.8) / 0.2;
+                sniperRifleModel.rotation.x = SNIPER_RIFLE_IDLE_ROTATION.x + (Math.PI / 8 * (1 - stageProgress));
+            }
+            
+            sniperRifleAnimationId = requestAnimationFrame(animate);
+        } else {
+            // Reset to exact original values
+            sniperRifleModel.position.copy(SNIPER_RIFLE_IDLE_POSITION);
+            sniperRifleModel.rotation.copy(SNIPER_RIFLE_IDLE_ROTATION);
+            
+            // Reload complete
+            sniperRifleAmmo = sniperRifleMaxAmmo;
+            sniperRifleReloading = false;
+            updateAmmoDisplay();
+            
+            // Clear animation state
+            sniperRifleAnimationInProgress = false;
+            sniperRifleAnimationId = null;
+        }
+    }
+    
+    sniperRifleAnimationId = requestAnimationFrame(animate);
+}
+
+function createMuzzleFlash(parentObject) {
+    // Create a light for the muzzle flash
+    const flashLight = new THREE.PointLight(0xffaa00, 3, 5);
+    flashLight.position.set(0, 0, -1);
+    parentObject.add(flashLight);
+    
+    // Create a visual mesh for the flash
+    const flashGeometry = new THREE.SphereGeometry(0.1, 8, 8);
+    const flashMaterial = new THREE.MeshBasicMaterial({
+        color: 0xffff00,
+        transparent: true,
+        opacity: 0.8
+    });
+    const flash = new THREE.Mesh(flashGeometry, flashMaterial);
+    flash.position.set(0, 0, -1);
+    parentObject.add(flash);
+    
+    // Remove after a short duration
+    setTimeout(() => {
+        parentObject.remove(flashLight);
+        parentObject.remove(flash);
+    }, 100);
+}
+
+function toggleScope() {
+    isScoped = !isScoped;
+    
+    if (isScoped) {
+        // Save normal FOV if we haven't already
+        if (!normalFOV) {
+            normalFOV = camera.fov;
+        }
+        
+        // Change FOV to zoom in
+        camera.fov = 20; // Narrower FOV for zoom
+        camera.updateProjectionMatrix();
+        
+        // Create or show scope overlay
+        createScopeOverlay();
+        
+        // Hide sniper model while scoped
+        if (sniperRifleModel) {
+            sniperRifleModel.visible = false;
+        }
+        
+        // Hide crosshair and replace with scope reticle
+        hideCrosshair();
+    } else {
+        // Restore normal FOV
+        camera.fov = normalFOV;
+        camera.updateProjectionMatrix();
+        
+        // Remove scope overlay
+        removeScopeOverlay();
+        
+        // Show sniper model again
+        if (sniperRifleModel && inventory[selectedSlot] === WEAPON_TYPES.SNIPER_RIFLE) {
+            sniperRifleModel.visible = true;
+        }
+        
+        // Show crosshair again
+        showCrosshair();
+    }
+}
+
+// Create a scope overlay effect
+function createScopeOverlay() {
+    // Remove any existing scope overlay
+    removeScopeOverlay();
+    
+    // Create the scope container
+    const scopeContainer = document.createElement('div');
+    scopeContainer.id = 'scopeOverlay';
+    scopeContainer.style.position = 'absolute';
+    scopeContainer.style.top = '0';
+    scopeContainer.style.left = '0';
+    scopeContainer.style.width = '100%';
+    scopeContainer.style.height = '100%';
+    scopeContainer.style.zIndex = '100';
+    scopeContainer.style.pointerEvents = 'none';
+    
+    // Create black circle border
+    const borderRadius = 40; // % of screen height
+    const scopeBorder = document.createElement('div');
+    scopeBorder.style.position = 'absolute';
+    scopeBorder.style.top = '50%';
+    scopeBorder.style.left = '50%';
+    scopeBorder.style.width = `${borderRadius * 2}vh`;
+    scopeBorder.style.height = `${borderRadius * 2}vh`;
+    scopeBorder.style.borderRadius = '50%';
+    scopeBorder.style.transform = 'translate(-50%, -50%)';
+    scopeBorder.style.boxShadow = '0 0 0 100vmax rgba(0, 0, 0, 0.9)';
+    scopeContainer.appendChild(scopeBorder);
+    
+    // Create crosshairs in the scope
+    const reticleSize = 30; // % of scope size
+    const reticle = document.createElement('div');
+    reticle.style.position = 'absolute';
+    reticle.style.top = '50%';
+    reticle.style.left = '50%';
+    reticle.style.width = `${reticleSize}%`;
+    reticle.style.height = `${reticleSize}%`;
+    reticle.style.transform = 'translate(-50%, -50%)';
+    
+    // Create horizontal line
+    const horizontalLine = document.createElement('div');
+    horizontalLine.style.position = 'absolute';
+    horizontalLine.style.top = '50%';
+    horizontalLine.style.left = '0';
+    horizontalLine.style.width = '100%';
+    horizontalLine.style.height = '2px';
+    horizontalLine.style.backgroundColor = 'rgba(0, 0, 0, 0.7)';
+    horizontalLine.style.transform = 'translateY(-50%)';
+    reticle.appendChild(horizontalLine);
+    
+    // Create vertical line
+    const verticalLine = document.createElement('div');
+    verticalLine.style.position = 'absolute';
+    verticalLine.style.top = '0';
+    verticalLine.style.left = '50%';
+    verticalLine.style.width = '2px';
+    verticalLine.style.height = '100%';
+    verticalLine.style.backgroundColor = 'rgba(0, 0, 0, 0.7)';
+    verticalLine.style.transform = 'translateX(-50%)';
+    reticle.appendChild(verticalLine);
+    
+    // Create center dot
+    const centerDot = document.createElement('div');
+    centerDot.style.position = 'absolute';
+    centerDot.style.top = '50%';
+    centerDot.style.left = '50%';
+    centerDot.style.width = '6px';
+    centerDot.style.height = '6px';
+    centerDot.style.borderRadius = '50%';
+    centerDot.style.backgroundColor = 'rgba(255, 0, 0, 0.7)';
+    centerDot.style.transform = 'translate(-50%, -50%)';
+    reticle.appendChild(centerDot);
+    
+    scopeBorder.appendChild(reticle);
+    
+    document.body.appendChild(scopeContainer);
+}
+
+function removeScopeOverlay() {
+    const existingOverlay = document.getElementById('scopeOverlay');
+    if (existingOverlay) {
+        existingOverlay.remove();
+    }
+}
+
+function createAssaultRifleModel() {
+    if (assaultRifleModel) {
+        camera.remove(assaultRifleModel);
+    }
+    
+    // Create assault rifle group
+    assaultRifleModel = new THREE.Group();
+    
+    // Create rifle body
+    const bodyGeometry = new THREE.BoxGeometry(0.1, 0.15, 0.6);
+    const bodyMaterial = new THREE.MeshStandardMaterial({
+        color: 0x333333,
+        roughness: 0.3,
+        metalness: 0.8
+    });
+    const body = new THREE.Mesh(bodyGeometry, bodyMaterial);
+    body.castShadow = true;
+    body.receiveShadow = true;
+    assaultRifleModel.add(body);
+    
+    // Create rifle barrel (longer than pistol)
+    const barrelGeometry = new THREE.CylinderGeometry(0.03, 0.03, 0.8, 16);
+    const barrelMaterial = new THREE.MeshStandardMaterial({
+        color: 0x444444,
+        roughness: 0.2,
+        metalness: 0.9
+    });
+    const barrel = new THREE.Mesh(barrelGeometry, barrelMaterial);
+    barrel.rotation.x = Math.PI / 2;
+    barrel.position.set(0, 0.03, 0.4);
+    barrel.castShadow = true;
+    barrel.receiveShadow = true;
+    assaultRifleModel.add(barrel);
+    
+    // Create rifle handle/grip
+    const handleGeometry = new THREE.BoxGeometry(0.08, 0.25, 0.1);
+    const handleMaterial = new THREE.MeshStandardMaterial({
+        color: 0x5c2e00, // Brown wooden stock
+        roughness: 0.7,
+        metalness: 0.1
+    });
+    const handle = new THREE.Mesh(handleGeometry, handleMaterial);
+    handle.position.set(0, -0.2, -0.2);
+    handle.castShadow = true;
+    handle.receiveShadow = true;
+    assaultRifleModel.add(handle);
+    
+    // Create rifle stock
+    const stockGeometry = new THREE.BoxGeometry(0.08, 0.15, 0.25);
+    const stockMaterial = new THREE.MeshStandardMaterial({
+        color: 0x5c2e00, // Brown wooden stock
+        roughness: 0.7,
+        metalness: 0.1
+    });
+    const stock = new THREE.Mesh(stockGeometry, stockMaterial);
+    stock.position.set(0, -0.05, -0.4);
+    stock.castShadow = true;
+    stock.receiveShadow = true;
+    assaultRifleModel.add(stock);
+    
+    // Create magazine
+    const magGeometry = new THREE.BoxGeometry(0.08, 0.2, 0.1);
+    const magMaterial = new THREE.MeshStandardMaterial({
+        color: 0x222222,
+        roughness: 0.5,
+        metalness: 0.7
+    });
+    const magazine = new THREE.Mesh(magGeometry, magMaterial);
+    magazine.position.set(0, -0.15, 0);
+    magazine.castShadow = true;
+    magazine.receiveShadow = true;
+    assaultRifleModel.add(magazine);
+    
+    // Position the rifle in view using constants
+    assaultRifleModel.position.copy(ASSAULT_RIFLE_IDLE_POSITION);
+    assaultRifleModel.rotation.copy(ASSAULT_RIFLE_IDLE_ROTATION);
+    
+    // Add a dedicated light
+    const rifleLight = new THREE.PointLight(0xffffff, 1.5, 1);
+    rifleLight.position.set(0, 0, -0.2);
+    assaultRifleModel.add(rifleLight);
+    
+    camera.add(assaultRifleModel);
+    console.log("Assault rifle model created");
+    
+    assaultRifleModel.visible = (inventory[selectedSlot] === WEAPON_TYPES.ASSAULT_RIFLE);
+    return assaultRifleModel;
+}
+
+function fireAssaultRifle() {
+    if (assaultRifleReloading) return;
+    
+    if (assaultRifleAmmo <= 0) {
+        // Auto reload when empty
+        animateAssaultRifleReload();
+        return;
+    }
+    
+    // Decrement ammo
+    assaultRifleAmmo--;
+    updateAmmoDisplay();
+    
+    // Play firing animation
+    animateAssaultRifleFire();
+    
+    // Create bullet with slight spread
+    createAssaultRifleBullet();
+    
+    // Auto reload when empty
+    if (assaultRifleAmmo === 0) {
+        setTimeout(animateAssaultRifleReload, 300);
+    }
+}
+
+function createAssaultRifleBullet() {
+    // Create bullet geometry
+    const bulletGeometry = new THREE.CylinderGeometry(0.02, 0.02, 0.08, 8);
+    const bulletMaterial = new THREE.MeshBasicMaterial({ color: 0xffff00 });
+    const bullet = new THREE.Mesh(bulletGeometry, bulletMaterial);
+    
+    // Add shadow casting to bullet
+    bullet.castShadow = true;
+    
+    // Get camera position and direction
+    const cameraPosition = new THREE.Vector3();
+    camera.getWorldPosition(cameraPosition);
+    
+    const cameraDirection = new THREE.Vector3(0, 0, -1);
+    camera.getWorldDirection(cameraDirection);
+    
+    // Apply slight random spread to direction
+    const spreadFactor = 0.01;  // Lower value = more accurate
+    const randomSpreadX = (Math.random() - 0.5) * spreadFactor;
+    const randomSpreadY = (Math.random() - 0.5) * spreadFactor;
+    
+    // Create a rotation matrix for the spread
+    const rotationMatrix = new THREE.Matrix4().makeRotationY(randomSpreadX);
+    rotationMatrix.multiply(new THREE.Matrix4().makeRotationX(randomSpreadY));
+    
+    // Apply rotation to direction
+    const spreadDirection = cameraDirection.clone().applyMatrix4(rotationMatrix).normalize();
+    
+    // Position bullet at gun barrel
+    bullet.position.copy(cameraPosition).addScaledVector(cameraDirection, 0.7);
+    
+    // Orient bullet
+    bullet.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), spreadDirection);
+    
+    // Add bullet data
+    bullet.userData = {
+        direction: spreadDirection,
+        speed: 2.5, // Faster than pistol bullets
+        damage: 10, // Less damage per shot than pistol but fires faster
+        lifetime: 1000,
+        spawnTime: performance.now()
+    };
+    
+    scene.add(bullet);
+    bullets.push(bullet);
+    
+    return bullet;
+}
+
+function animateAssaultRifleFire() {
+    if (!assaultRifleModel || assaultRifleReloading) return;
+    
+    // Force cancel any ongoing animation
+    if (assaultRifleAnimationInProgress) {
+        cancelAnimationFrame(assaultRifleAnimationId);
+        // Reset position immediately
+        assaultRifleModel.position.copy(ASSAULT_RIFLE_IDLE_POSITION);
+        assaultRifleModel.rotation.copy(ASSAULT_RIFLE_IDLE_ROTATION);
+    }
+    
+    // Mark animation as in progress
+    assaultRifleAnimationInProgress = true;
+    
+    // Animation constants - shorter recoil for rapid fire
+    const recoilDuration = 50; // milliseconds
+    const returnDuration = 80; // milliseconds
+    
+    // Start time
+    const startTime = performance.now();
+    
+    function animate() {
+        const now = performance.now();
+        const elapsed = now - startTime;
+        
+        if (elapsed < recoilDuration) {
+            // Recoil motion
+            const progress = elapsed / recoilDuration;
+            assaultRifleModel.position.z = ASSAULT_RIFLE_IDLE_POSITION.z + (0.05 * progress);
+            assaultRifleModel.position.y = ASSAULT_RIFLE_IDLE_POSITION.y + (0.02 * progress);
+            assaultRifleModel.rotation.x = ASSAULT_RIFLE_IDLE_ROTATION.x - (Math.PI / 60 * progress);
+            assaultRifleAnimationId = requestAnimationFrame(animate);
+        } else if (elapsed < recoilDuration + returnDuration) {
+            // Return motion
+            const returnProgress = (elapsed - recoilDuration) / returnDuration;
+            assaultRifleModel.position.z = ASSAULT_RIFLE_IDLE_POSITION.z + (0.05 * (1 - returnProgress));
+            assaultRifleModel.position.y = ASSAULT_RIFLE_IDLE_POSITION.y + (0.02 * (1 - returnProgress));
+            assaultRifleModel.rotation.x = ASSAULT_RIFLE_IDLE_ROTATION.x - (Math.PI / 60 * (1 - returnProgress));
+            assaultRifleAnimationId = requestAnimationFrame(animate);
+        } else {
+            // Reset to exact original values
+            assaultRifleModel.position.copy(ASSAULT_RIFLE_IDLE_POSITION);
+            assaultRifleModel.rotation.copy(ASSAULT_RIFLE_IDLE_ROTATION);
+            
+            // Clear animation state
+            assaultRifleAnimationInProgress = false;
+            assaultRifleAnimationId = null;
+        }
+    }
+    
+    assaultRifleAnimationId = requestAnimationFrame(animate);
+}
+
+function animateAssaultRifleReload() {
+    if (!assaultRifleModel || assaultRifleReloading) return;
+    
+    // Force cancel any ongoing animation
+    if (assaultRifleAnimationInProgress) {
+        cancelAnimationFrame(assaultRifleAnimationId);
+        // Reset position immediately
+        assaultRifleModel.position.copy(ASSAULT_RIFLE_IDLE_POSITION);
+        assaultRifleModel.rotation.copy(ASSAULT_RIFLE_IDLE_ROTATION);
+    }
+    
+    assaultRifleReloading = true;
+    assaultRifleAnimationInProgress = true;
+    showNotification("Reloading assault rifle...", 2000);
+    
+    // Animation constants
+    const totalDuration = 2000; // 2 second reload time
+    const startTime = performance.now();
+    
+    function animate() {
+        const now = performance.now();
+        const elapsed = now - startTime;
+        
+        if (elapsed < totalDuration) {
+            const progress = elapsed / totalDuration;
+            
+            // Magazine change animation
+            if (progress < 0.3) {
+                // First stage - tilt down
+                const stageProgress = progress / 0.3;
+                assaultRifleModel.rotation.x = ASSAULT_RIFLE_IDLE_ROTATION.x + (Math.PI / 12 * stageProgress);
+            } else if (progress < 0.6) {
+                // Second stage - rotate to the side slightly
+                const stageProgress = (progress - 0.3) / 0.3;
+                assaultRifleModel.rotation.x = ASSAULT_RIFLE_IDLE_ROTATION.x + Math.PI / 12;
+                assaultRifleModel.rotation.z = ASSAULT_RIFLE_IDLE_ROTATION.z - (Math.PI / 10 * stageProgress);
+            } else {
+                // Third stage - return to position
+                const stageProgress = (progress - 0.6) / 0.4;
+                assaultRifleModel.rotation.x = ASSAULT_RIFLE_IDLE_ROTATION.x + (Math.PI / 12 * (1 - stageProgress));
+                assaultRifleModel.rotation.z = ASSAULT_RIFLE_IDLE_ROTATION.z - (Math.PI / 10 * (1 - stageProgress));
+            }
+            
+            assaultRifleAnimationId = requestAnimationFrame(animate);
+        } else {
+            // Reset to exact original values
+            assaultRifleModel.position.copy(ASSAULT_RIFLE_IDLE_POSITION);
+            assaultRifleModel.rotation.copy(ASSAULT_RIFLE_IDLE_ROTATION);
+            
+            // Reload complete
+            assaultRifleAmmo = assaultRifleMaxAmmo;
+            assaultRifleReloading = false;
+            updateAmmoDisplay();
+            
+            // Clear animation state
+            assaultRifleAnimationInProgress = false;
+            assaultRifleAnimationId = null;
+        }
+    }
+    
+    assaultRifleAnimationId = requestAnimationFrame(animate);
+}
+
 // Function to move item from inventory to bar
 function moveFromInventoryToBar(invSlot, barSlot) {
     if (inventoryItems[invSlot] === null) return;
@@ -854,6 +3120,9 @@ function getItemSymbol(item) {
         case WEAPON_TYPES.KNIFE: return '🔪'; 
         case WEAPON_TYPES.PISTOL: return '🔫';
         case WEAPON_TYPES.SHOTGUN: return '🦾'; // Using a different emoji for shotgun
+        case WEAPON_TYPES.ASSAULT_RIFLE: return '🎯'; // Using target emoji for assault rifle
+        case WEAPON_TYPES.SNIPER_RIFLE: return '🎭';
+        case WEAPON_TYPES.CROSSBOW: return '🏹';
         case ITEM_TYPES.BANDAGE: return '🩹';
         case ITEM_TYPES.MEDKIT: return '🧰';
         case ITEM_TYPES.MINI_SHIELD: return '🛡️';
@@ -1109,7 +3378,8 @@ function selectSlot(slot) {
     if (slot >= 0 && slot < 5) {
         selectedSlot = slot;
         updateItemBar();
-        updateWeaponVisibility(); // Update weapon visibility when changing slots
+        updateWeaponVisibility();
+        updateAmmoDisplay(); // Make sure to update ammo display when changing weapons
     }
 }
 
@@ -1150,7 +3420,56 @@ function useSelectedItem() {
         fireShotgun();
         return;
     }
+
+    else if (item === WEAPON_TYPES.ASSAULT_RIFLE) {
+        if (!assaultRifleModel) {
+            createAssaultRifleModel();
+        }
+        
+        assaultRifleModel.visible = true;
+        fireAssaultRifle();
+        return;
+    }
     
+    else if (item === WEAPON_TYPES.SNIPER_RIFLE) {
+        if (!sniperRifleModel) {
+            createSniperRifleModel();
+        }
+        
+        sniperRifleModel.visible = true && !isScoped; // Don't show rifle when scoped
+        fireSniperRifle();
+        return;
+    }
+
+    else if (item === WEAPON_TYPES.CROSSBOW) {
+        if (!crossbowModel) {
+            createCrossbowModel();
+        }
+        
+        crossbowModel.visible = true;
+        fireCrossbow();
+        return;
+    }
+
+    else if (item === WEAPON_TYPES.MINIGUN) {
+        if (!minigunModel) {
+            createMinigunModel();
+        }
+        
+        minigunModel.visible = true;
+        fireMinigun();
+        return;
+    }
+
+    else if (item === WEAPON_TYPES.ROCKET_LAUNCHER) {
+        if (!rocketLauncherModel) {
+            createRocketLauncherModel();
+        }
+        rocketLauncherModel.visible = true;
+        fireRocketLauncher();
+        return;
+    }
+
     // Handle stackable consumable items
     if (typeof item === 'object' && item !== null) {
         const itemType = item.type;
@@ -1710,6 +4029,50 @@ function updateWeaponVisibility() {
     if (shotgunModel) {
         shotgunModel.visible = (currentItem === WEAPON_TYPES.SHOTGUN);
     }
+
+    if (assaultRifleModel) {
+        assaultRifleModel.visible = (currentItem === WEAPON_TYPES.ASSAULT_RIFLE);
+    }
+
+    if (sniperRifleModel) {
+        sniperRifleModel.visible = (currentItem === WEAPON_TYPES.SNIPER_RIFLE && !isScoped);
+    }
+
+     // Handle crossbow visibility
+    if (crossbowModel) {
+        crossbowModel.visible = (currentItem === WEAPON_TYPES.CROSSBOW);
+        
+        // Update arrow visibility based on ammo
+        if (currentItem === WEAPON_TYPES.CROSSBOW) {
+            updateCrossbowArrowVisibility();
+        }
+    }
+
+    if (minigunModel) {
+        minigunModel.visible = (currentItem === WEAPON_TYPES.MINIGUN);
+    }
+
+    if (rocketLauncherModel) {
+        rocketLauncherModel.visible = (currentItem === WEAPON_TYPES.ROCKET_LAUNCHER);
+    }
+
+    // Update ammo display container visibility
+    const ammoContainer = document.getElementById('ammoContainer');
+    if (ammoContainer) {
+        // Show ammo for pistol, shotgun, or assault rifle
+        ammoContainer.style.display = (
+            currentItem === WEAPON_TYPES.PISTOL || 
+            currentItem === WEAPON_TYPES.SHOTGUN ||
+            currentItem === WEAPON_TYPES.ASSAULT_RIFLE ||
+            currentItem === WEAPON_TYPES.SNIPER_RIFLE ||
+            currentItem === WEAPON_TYPES.CROSSBOW ||
+            currentItem === WEAPON_TYPES.MINIGUN ||
+            currentItem === WEAPON_TYPES.ROCKET_LAUNCHER
+        ) ? 'block' : 'none';
+    }
+    
+    // After updating visibility, ensure ammo display shows correct values
+    updateAmmoDisplay();
     
     // Handle consumable item visibility
     if (currentItem !== null && typeof currentItem === 'object') {
@@ -1745,14 +4108,6 @@ function updateWeaponVisibility() {
         if (heldConsumableModel) {
             heldConsumableModel.visible = false;
         }
-    }
-    
-    // Update ammo display container visibility
-    const ammoContainer = document.getElementById('ammoContainer');
-    if (ammoContainer) {
-        // Show ammo for pistol or shotgun
-        ammoContainer.style.display = (currentItem === WEAPON_TYPES.PISTOL || 
-                                       currentItem === WEAPON_TYPES.SHOTGUN) ? 'block' : 'none';
     }
 }
 
@@ -2275,7 +4630,7 @@ function startGame() {
     updateCoinDisplay();
     
     // Add pistol to inventory alongside knife
-    inventory = [WEAPON_TYPES.KNIFE, WEAPON_TYPES.PISTOL, WEAPON_TYPES.SHOTGUN, null, null];
+    inventory = [WEAPON_TYPES.KNIFE, null, null, null, null];
     inventoryItems = Array(10).fill(null);
     
     // Reset pistol ammo
@@ -2291,6 +4646,11 @@ function startGame() {
         createKnifeModel();
         createPistolModel();
         createShotgunModel();
+        createAssaultRifleModel();
+        createSniperRifleModel();
+        createCrossbowModel();
+        createMinigunModel();
+        createRocketLauncherModel();
     }, 100);
     
     // Initialize the knife as first item
@@ -3021,7 +5381,7 @@ function createBullet() {
     bullet.userData = {
         direction: cameraDirection.clone(),
         speed: 2.0,
-        damage: 20, // Takes 2 hits to kill normal enemy
+        damage: 14, // Changed from 20 to 14, now takes 3 hits to kill normal enemy
         lifetime: 1000,
         spawnTime: performance.now()
     };
@@ -3032,56 +5392,140 @@ function createBullet() {
     return bullet;
 }
 
-// Update bullets
+// Update bullets and handle rocket explosions
 function updateBullets() {
     const now = performance.now();
     
     for (let i = bullets.length - 1; i >= 0; i--) {
         const bullet = bullets[i];
         
+        // Skip if bullet was already removed
+        if (!bullet.parent) continue;
+        
+        // Store previous position for collision check
+        const previousPosition = bullet.position.clone();
+        
         // Move bullet
         bullet.position.addScaledVector(bullet.userData.direction, bullet.userData.speed);
         
         // Check lifetime
         if (now - bullet.userData.spawnTime > bullet.userData.lifetime) {
+            // Handle rocket explosion on timeout
+            if (bullet.userData.isRocket) {
+                createRocketExplosion(bullet.position, bullet.userData.blastRadius, bullet.userData.damage);
+                
+                // Clean up any ongoing thrust effects
+                if (bullet.userData.thrustEmitter) {
+                    clearInterval(bullet.userData.thrustEmitter);
+                }
+            }
+            
             scene.remove(bullet);
             bullets.splice(i, 1);
             continue;
         }
         
-        // Calculate distance traveled for shotgun pellets (for damage falloff)
-        const isShotgunPellet = bullet.userData.maxEffectiveRange !== undefined;
-        if (isShotgunPellet) {
-            const distanceTraveled = bullet.position.distanceTo(camera.position);
+        // For rockets only: check ground collision (y=0 is floor)
+        if (bullet.userData.isRocket && bullet.position.y < 0.5) {
+            // Rocket hit the ground
+            createRocketExplosion(
+                new THREE.Vector3(bullet.position.x, 0.5, bullet.position.z), 
+                bullet.userData.blastRadius, 
+                bullet.userData.damage
+            );
             
-            // Apply damage falloff based on distance
-            if (distanceTraveled > bullet.userData.maxEffectiveRange) {
-                // Calculate damage reduction based on how far beyond max range
-                const overRangeFactor = Math.min(1, (distanceTraveled - bullet.userData.maxEffectiveRange) / 5);
-                bullet.userData.damage = bullet.userData.initialDamage * (1 - overRangeFactor);
+            // Clean up thrust effects
+            if (bullet.userData.thrustEmitter) {
+                clearInterval(bullet.userData.thrustEmitter);
             }
+            
+            scene.remove(bullet);
+            bullets.splice(i, 1);
+            continue;
         }
         
-        // Check enemy hits
+        // Check enemy hits - use a larger collision box for rockets
+        const collisionCheckRadius = bullet.userData.isRocket ? 1.5 : 0.5;
+        let hitDetected = false;
+        
         for (let j = 0; j < activeEnemies.length; j++) {
             const enemy = activeEnemies[j];
+            if (!enemy || !enemy.position) continue;
+            
             const distance = bullet.position.distanceTo(enemy.position);
             
+            // Use larger collision radius for rockets and other projectiles
+            const collisionRadius = enemy.geometry.parameters.width + collisionCheckRadius;
+            
             // If hit
-            if (distance < enemy.geometry.parameters.width / 2 + 0.1) {
-                // Apply damage
-                damageEnemy(enemy, bullet.userData.damage);
+            if (distance < collisionRadius) {
+                hitDetected = true;
                 
-                // Create hit effect
-                createHitEffect(bullet.position);
-                
-                // Show hit marker
-                showHitMarker();
+                // Special handling for rockets - explode on impact
+                if (bullet.userData.isRocket) {
+                    console.log("Rocket hit enemy at distance:", distance);
+                    
+                    // Create explosion at the point of impact
+                    createRocketExplosion(bullet.position, bullet.userData.blastRadius, bullet.userData.damage);
+                    
+                    // Clean up thrust effects
+                    if (bullet.userData.thrustEmitter) {
+                        clearInterval(bullet.userData.thrustEmitter);
+                    }
+                } else {
+                    // Regular bullet damage
+                    const damageAmount = bullet.userData.damage;
+                    damageEnemy(enemy, damageAmount);
+                    
+                    // Create hit effect
+                    createHitEffect(bullet.position);
+                    
+                    // Show hit marker
+                    showHitMarker();
+                }
                 
                 // Remove bullet
                 scene.remove(bullet);
                 bullets.splice(i, 1);
                 break;
+            }
+        }
+        
+        if (hitDetected) continue;
+        
+        // For rockets only: check collision with environment (like abandoned cars)
+        if (bullet.userData.isRocket) {
+            // Check collisions with abandoned cars
+            for (const car of abandonedCars) {
+                if (!car || !car.userData) continue;
+                
+                // Create vectors for position calculations
+                const carPos = car.position.clone();
+                
+                // Get car dimensions from userData
+                const carRadius = car.userData.collisionRadius;
+                
+                if (!carRadius) continue;
+                
+                // Calculate distance between rocket and car
+                const distance = bullet.position.distanceTo(carPos);
+                
+                // Check if collision occurs
+                if (distance < carRadius) {
+                    console.log("Rocket hit car at distance:", distance);
+                    
+                    // Create explosion at impact point
+                    createRocketExplosion(bullet.position, bullet.userData.blastRadius, bullet.userData.damage);
+                    
+                    // Clean up thrust effects
+                    if (bullet.userData.thrustEmitter) {
+                        clearInterval(bullet.userData.thrustEmitter);
+                    }
+                    
+                    scene.remove(bullet);
+                    bullets.splice(i, 1);
+                    break;
+                }
             }
         }
     }
@@ -3250,6 +5694,12 @@ document.addEventListener('keydown', (event) => {
         else if (inventory[selectedSlot] === WEAPON_TYPES.SHOTGUN && shotgunAmmo < shotgunMaxAmmo && !shotgunReloading) {
             animateShotgunReload();
         }
+        else if (inventory[selectedSlot] === WEAPON_TYPES.ASSAULT_RIFLE && assaultRifleAmmo < assaultRifleMaxAmmo && !assaultRifleReloading) {
+            animateAssaultRifleReload();
+        }
+        else if (inventory[selectedSlot] === WEAPON_TYPES.CROSSBOW && crossbowAmmo < crossbowMaxAmmo && !crossbowReloading) {
+        animateCrossbowReload();
+        }
     }
 });
 
@@ -3263,6 +5713,7 @@ document.addEventListener('click', (event) => {
             // Use the selected item when locked and playing
             // This should work regardless of movement state
             useSelectedItem();
+            updateAmmoDisplay();
 
             // Check for enemy hit if using knife
             if (inventory[selectedSlot] === 0) { // Knife is item type 0
@@ -3310,6 +5761,7 @@ let usingItem = false;
 let currentItemInUse = null;
 let itemUseStartTime = 0;
 let itemUseTimeout = null
+let mouseIsDown = false;
 
 const HELD_ITEM_POSITION = new THREE.Vector3(0.3, -0.3, -0.5);
 const HELD_ITEM_ROTATION = new THREE.Euler(0, Math.PI, 0);
@@ -4606,39 +7058,70 @@ function populateShopItems() {
     const shopItemsContainer = document.querySelector('.shop-items');
     shopItemsContainer.innerHTML = ''; // Clear existing items
     
-    // Create each shop item
+    // Create consumables section with header
+    const consumablesHeader = document.createElement('div');
+    consumablesHeader.className = 'shop-category-header';
+    consumablesHeader.innerHTML = '<h3>Health & Shields</h3>';
+    shopItemsContainer.appendChild(consumablesHeader);
+    
+    // Add consumable items
     SHOP_ITEMS.forEach(item => {
-        const itemElement = document.createElement('div');
-        itemElement.className = 'shop-item';
-        itemElement.innerHTML = `
-            <div class="item-icon">${item.icon}</div>
-            <div class="item-details">
-                <div class="item-name">${item.name}</div>
-                <div class="item-description">${item.description}</div>
-            </div>
-            <div class="item-price">
-                <span class="coin-icon">🪙</span>
-                <span>${item.price}</span>
-            </div>
-            <button class="buy-button" data-item-id="${item.id}" ${!infiniteMoneyCheat && playerCoins < item.price ? 'disabled' : ''}>Buy</button>
-        `;
-        
-        shopItemsContainer.appendChild(itemElement);
+        // Check if this is a consumable item
+        if (item.id >= ITEM_TYPES.BANDAGE && item.id <= ITEM_TYPES.BIG_SHIELD) {
+            addItemToShop(item, shopItemsContainer);
+        }
     });
     
-    // Add event listeners to buy buttons with stopPropagation
-    document.querySelectorAll('.buy-button').forEach(button => {
-        button.addEventListener('click', (e) => {
-            e.stopPropagation(); // Stop event from bubbling up to document
-            const itemId = parseInt(e.target.dataset.itemId);
-            purchaseItem(itemId);
-        });
+    // Create weapons section with header and separator
+    const separator = document.createElement('div');
+    separator.className = 'shop-separator';
+    shopItemsContainer.appendChild(separator);
+    
+    const weaponsHeader = document.createElement('div');
+    weaponsHeader.className = 'shop-category-header';
+    weaponsHeader.innerHTML = '<h3>Weapons</h3>';
+    shopItemsContainer.appendChild(weaponsHeader);
+    
+    // Add weapon items
+    SHOP_ITEMS.forEach(item => {
+        // Check if this is a weapon item
+        if (item.id >= WEAPON_TYPES.PISTOL && item.id <= WEAPON_TYPES.ROCKET_LAUNCHER) {
+            addItemToShop(item, shopItemsContainer);
+        }
     });
     
     // Add click handler to the shop container itself
     const shop = document.getElementById('shop');
     shop.addEventListener('click', (e) => {
         e.stopPropagation(); // Prevent clicks inside shop from triggering pointer lock
+    });
+}
+
+// Helper function to add an item to the shop
+function addItemToShop(item, container) {
+    const itemElement = document.createElement('div');
+    itemElement.className = 'shop-item';
+    itemElement.innerHTML = `
+        <div class="item-icon">${item.icon}</div>
+        <div class="item-details">
+            <div class="item-name">${item.name}</div>
+            <div class="item-description">${item.description}</div>
+        </div>
+        <div class="item-price">
+            <span class="coin-icon">🪙</span>
+            <span>${item.price}</span>
+        </div>
+        <button class="buy-button" data-item-id="${item.id}" ${!infiniteMoneyCheat && playerCoins < item.price ? 'disabled' : ''}>Buy</button>
+    `;
+    
+    container.appendChild(itemElement);
+    
+    // Add event listener to the buy button
+    const buyButton = itemElement.querySelector('.buy-button');
+    buyButton.addEventListener('click', (e) => {
+        e.stopPropagation(); // Stop event from bubbling up
+        const itemId = parseInt(e.target.dataset.itemId);
+        purchaseItem(itemId);
     });
 }
 
@@ -4658,30 +7141,78 @@ function purchaseItem(itemId) {
             playerCoins -= item.price;
         }
         
-        // Add item to inventory
-        if (addItem(item.id)) {
-            // Update coin displays
-            document.getElementById('shopCoins').textContent = infiniteMoneyCheat ? "INFINITE" : playerCoins;
-            updateCoinDisplay();
-            
-            // Show notification
-            showNotification(`Purchased ${item.name}!`, 2000);
-            
-            // Refresh shop items to update button states
-            populateShopItems();
-            
-            // Important: Do NOT request pointer lock here!
-        } else {
-            // Inventory full, refund coins if not using infinite money
-            if (!infiniteMoneyCheat) {
-                playerCoins += item.price;
+        // For weapon items, we need special handling
+        if (itemId >= WEAPON_TYPES.PISTOL && itemId <= WEAPON_TYPES.ROCKET_LAUNCHER) {
+            // Add weapon to inventory
+            if (addItem(itemId)) {
+                // Update coin displays
+                document.getElementById('shopCoins').textContent = infiniteMoneyCheat ? "INFINITE" : playerCoins;
+                updateCoinDisplay();
+                
+                // Show notification
+                showNotification(`Purchased ${item.name}!`, 2000);
+                
+                // Refresh shop items to update button states
+                populateShopItems();
+                
+                // Important: Update weapon state as needed
+                switch(itemId) {
+                    case WEAPON_TYPES.PISTOL:
+                        pistolAmmo = pistolMaxAmmo;
+                        break;
+                    case WEAPON_TYPES.SHOTGUN:
+                        shotgunAmmo = shotgunMaxAmmo;
+                        break;
+                    case WEAPON_TYPES.ASSAULT_RIFLE:
+                        assaultRifleAmmo = assaultRifleMaxAmmo;
+                        break;
+                    case WEAPON_TYPES.SNIPER_RIFLE:
+                        sniperRifleAmmo = sniperRifleMaxAmmo;
+                        break;
+                    case WEAPON_TYPES.CROSSBOW:
+                        crossbowAmmo = crossbowMaxAmmo;
+                        break;
+                    case WEAPON_TYPES.MINIGUN:
+                        minigunAmmo = minigunMaxAmmo;
+                        break;
+                    case WEAPON_TYPES.ROCKET_LAUNCHER:
+                        rocketLauncherAmmo = rocketLauncherMaxAmmo;
+                        break;
+                }
+                
+                updateAmmoDisplay();
+            } else {
+                // Inventory full, refund coins if not using infinite money
+                if (!infiniteMoneyCheat) {
+                    playerCoins += item.price;
+                }
+                showNotification('Inventory is full!', 2000);
             }
-            showNotification('Inventory is full!', 2000);
+        } else {
+            // Handle consumable items (existing logic)
+            if (addItem(item.id)) {
+                // Update coin displays
+                document.getElementById('shopCoins').textContent = infiniteMoneyCheat ? "INFINITE" : playerCoins;
+                updateCoinDisplay();
+                
+                // Show notification
+                showNotification(`Purchased ${item.name}!`, 2000);
+                
+                // Refresh shop items to update button states
+                populateShopItems();
+            } else {
+                // Inventory full, refund coins if not using infinite money
+                if (!infiniteMoneyCheat) {
+                    playerCoins += item.price;
+                }
+                showNotification('Inventory is full!', 2000);
+            }
         }
     } else {
         showNotification('Not enough coins!', 2000);
     }
 }
+
 
 // Function to create detailed health and shield item models
 function createItemModels() {
@@ -5530,6 +8061,21 @@ function addPotholes(roadLength, roadWidth) {
     }
 }
 
+document.addEventListener('contextmenu', (event) => {
+    // Prevent default right-click menu
+    event.preventDefault();
+    event.stopPropagation();
+    
+    // Only toggle scope if we have the sniper rifle selected and not reloading
+    if (gameStarted && !isPaused && !isInventoryOpen && !isShopOpen &&
+        inventory[selectedSlot] === WEAPON_TYPES.SNIPER_RIFLE && !sniperRifleReloading) {
+        toggleScope();
+        console.log("Scope toggled:", isScoped); // Debug log
+    }
+    
+    return false; // Ensure we block the context menu
+});
+
 // Function to add faded road markings
 function addRoadMarkings(roadLength) {
     // Create dashed center line (faded and broken)
@@ -5647,6 +8193,28 @@ document.addEventListener('mousemove', (event) => {
     pitchObject.rotation.x = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, pitchObject.rotation.x));
 });
 
+document.addEventListener('mousedown', (event) => {
+    if (event.button === 0) { // Left mouse button
+        mouseIsDown = true; // Track mouse down state
+        if (gameStarted && !isPaused && isLocked && 
+            inventory[selectedSlot] === WEAPON_TYPES.MINIGUN) {
+            // Start minigun spinning
+            startMinigunSpin();
+        }
+    }
+});
+
+document.addEventListener('mouseup', (event) => {
+    if (event.button === 0) { // Left mouse button
+        mouseIsDown = false; // Track mouse up state
+        if (gameStarted && 
+            inventory[selectedSlot] === WEAPON_TYPES.MINIGUN) {
+            // Stop minigun spinning
+            stopMinigunSpin();
+        }
+    }
+});
+
 // Update key controls to include shift and space
 const keys = { w: false, a: false, s: false, d: false, shift: false, space: false };
 
@@ -5704,9 +8272,106 @@ function animate() {
         if (!isPaused && !isGameOver && player) {
             updatePlayer();
             updateWeaponVisibility();
+            
+            // Handle minigun spinning and heat mechanics
+            if (minigunModel) {
+                // Update minigun barrel rotation
+                updateMinigunSpin();
+                
+                // Cool down minigun if not actively firing
+                if (minigunHeatLevel > 0 && !minigunSpinning) {
+                    minigunHeatLevel = Math.max(0, minigunHeatLevel - 0.01);
+                    updateMinigunHeat();
+                }
+            }
+            
             updateEnemies();
             updateBullets();
+            
+            // Update day-night cycle if enabled
+            if (typeof updateDayNightCycle === 'function') {
+                updateDayNightCycle(currentRound);
+            }
         }
+    }
+}
+
+// Function that updates minigun barrel spin animation
+function updateMinigunSpin() {
+    if (!minigunModel) return;
+    
+    // Get barrel group
+    const barrelGroup = minigunModel.userData.barrelGroup;
+    if (!barrelGroup) return;
+    
+    if (minigunSpinning) {
+        // Accelerate spin speed
+        minigunSpinSpeed = Math.min(1, minigunSpinSpeed + 0.02);
+    } else {
+        // Decelerate spin speed
+        minigunSpinSpeed = Math.max(0, minigunSpinSpeed - 0.01);
+        
+        // If we're close to stopping, just stop completely for cleaner state
+        if (minigunSpinSpeed < 0.01) {
+            minigunSpinSpeed = 0;
+        }
+    }
+    
+    // Rotate barrels based on current spin speed
+    if (minigunSpinSpeed > 0) {
+        minigunBarrelRotation += minigunSpinSpeed * 0.4;
+        barrelGroup.rotation.z = minigunBarrelRotation;
+    }
+}
+
+
+// Function that updates minigun heat indicator
+function updateMinigunHeat() {
+    if (!minigunModel || !minigunModel.userData.heatIndicator) return;
+    
+    const heatIndicator = minigunModel.userData.heatIndicator;
+    
+    // Change color based on heat (green → yellow → red)
+    if (minigunHeatLevel < 0.5) {
+        // Green to yellow
+        const t = minigunHeatLevel * 2; // 0 to 1
+        heatIndicator.material.color.setRGB(t, 1, 0); 
+        heatIndicator.material.emissive.setRGB(t * 0.5, 0.5, 0);
+    } else {
+        // Yellow to red
+        const t = (minigunHeatLevel - 0.5) * 2; // 0 to 1
+        heatIndicator.material.color.setRGB(1, 1 - t, 0);
+        heatIndicator.material.emissive.setRGB(0.5, (1 - t) * 0.5, 0);
+    }
+    
+    // If overheated, force stop firing
+    if (minigunHeatLevel >= 1) {
+        showNotification("Minigun overheated!");
+        stopMinigunSpin();
+        
+        // Disable firing until cooled down
+        minigunReloading = true;
+        
+        // Cool down over time
+        setTimeout(() => {
+            // Reset heat properly
+            minigunHeatLevel = 0;
+            updateMinigunHeat();
+            
+            // IMPORTANT: Make sure to reset reloading flag so gun can be used again
+            minigunReloading = false;
+            
+            // NEW CODE: Check if ammo is empty and reload if needed
+            if (minigunAmmo === 0 && !minigunAnimationInProgress) {
+                showNotification("Minigun cooled down - reloading");
+                // Small delay to ensure animations don't conflict
+                setTimeout(() => {
+                    animateMinigunReload();
+                }, 200);
+            } else {
+                showNotification("Minigun cooled down");
+            }
+        }, 3000);
     }
 }
 
@@ -6498,9 +9163,9 @@ function fireShotgun() {
     // Play firing animation
     animateShotgunFire();
     
-    // Create shotgun pellets (multiple bullets with spread)
-    const pelletCount = 8; // Number of pellets per shot
-    const spreadAngle = Math.PI / 10; // Spread angle in radians
+    // Create shotgun pellets
+    const pelletCount = 8;
+    const spreadAngle = Math.PI / 10;
     
     for (let i = 0; i < pelletCount; i++) {
         createShotgunPellet(spreadAngle);
@@ -6512,6 +9177,7 @@ function fireShotgun() {
     }
 }
 
+// Fix for shotgun pellet damage
 function createShotgunPellet(spreadAngle) {
     // Create bullet geometry (smaller than regular bullets)
     const bulletGeometry = new THREE.SphereGeometry(0.02, 8, 8);
@@ -6545,14 +9211,17 @@ function createShotgunPellet(spreadAngle) {
     // Orient bullet
     bullet.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), spreadDirection);
     
+    // Fixed damage values for shotgun pellets
+    const pelletDamage = 10;
+    
     // Add bullet data with REDUCED lifetime for shorter range
     bullet.userData = {
         direction: spreadDirection,
         speed: 2.0,
-        damage: 10, // Each pellet does less damage than a pistol bullet
+        damage: pelletDamage, // Each pellet does less damage than a pistol bullet
         lifetime: 300, // REDUCED from 500ms to 300ms for shorter range
         spawnTime: performance.now(),
-        initialDamage: 10, // Store initial damage for falloff calculation
+        initialDamage: pelletDamage, // Store initial damage for falloff calculation
         maxEffectiveRange: 8 // Maximum effective range in units before damage drops
     };
     
@@ -6989,108 +9658,125 @@ function spawnEnemy(enemyType) {
     else if (enemyType === ENEMY_TYPES.MEGA_BOSS) {
         return spawnMegaBoss(config);
     }
-    else if (enemyType === ENEMY_TYPES.BOSS) {
-        return spawnFirstBoss(config);
-    }
-    
-    // Create enemy mesh for standard enemy types
-    const geometry = new THREE.BoxGeometry(
-        config.size.width,
-        config.size.height,
-        config.size.depth
-    );
-    const material = new THREE.MeshPhongMaterial({ 
-        color: config.color,
-        emissive: 0x000000
-    });
-    const enemy = new THREE.Mesh(geometry, material);
-    
-    // Position enemy at a random location on the edge of the map
-    // UPDATED from 70 to match expanded map boundaries
-    const spawnRadius = 100; // Increased from 70 to spawn closer to the expanded map edges
-    const angle = Math.random() * Math.PI * 2;
-    enemy.position.x = Math.cos(angle) * spawnRadius;
-    enemy.position.z = Math.sin(angle) * spawnRadius;
-    enemy.position.y = config.size.height / 2;
-    
-    // Add shadow properties
-    enemy.castShadow = true;
-    enemy.receiveShadow = true;
-    
-    // Add enemy metadata
-    enemy.userData = {
-        type: enemyType,
-        health: config.health,
-        maxHealth: config.health,
-        speed: config.speed,
-        damage: config.damage,
-        attackRange: config.attackRange,
-        lastAttackTime: 0,
-        attackCooldown: config.attackCooldown
-    };
-    
-    // Add special properties based on enemy type
-    if (enemyType === ENEMY_TYPES.RANGED || enemyType === ENEMY_TYPES.TELEPORTER) {
-        enemy.userData.projectileSpeed = config.projectileSpeed;
-    }
-    
-    if (enemyType === ENEMY_TYPES.SPEEDER) {
-        enemy.userData.circleStrafe = config.circleStrafe;
-        enemy.userData.strafeDirection = Math.random() > 0.5 ? 1 : -1;
-        enemy.userData.strafeAngle = 0;
-    }
-    
-    if (enemyType === ENEMY_TYPES.EXPLODER) {
-        enemy.userData.explodeOnDeath = config.explodeOnDeath;
-        enemy.userData.pulseRate = config.pulseRate;
+    else {
+        // Create enemy mesh for standard enemy types
+        const geometry = new THREE.BoxGeometry(
+            config.size.width,
+            config.size.height,
+            config.size.depth
+        );
+        const material = new THREE.MeshPhongMaterial({ 
+            color: config.color,
+            emissive: 0x000000
+        });
+        const enemy = new THREE.Mesh(geometry, material);
         
-        // Start pulsing animation
-        startPulsingAnimation(enemy);
-    }
-    
-    if (enemyType === ENEMY_TYPES.SHIELDER) {
-        enemy.userData.frontShield = config.frontShield;
-        enemy.userData.shieldReduction = config.shieldReduction;
+        // NEW: Use improved spawn position logic to avoid spawning inside obstacles
+        const spawnPosition = getValidEnemySpawnPosition(config.size.width);
+        enemy.position.copy(spawnPosition);
+        enemy.position.y = config.size.height / 2;
         
-        // Create visual shield
-        addShieldToEnemy(enemy);
-    }
-    
-    if (enemyType === ENEMY_TYPES.TELEPORTER) {
-        enemy.userData.teleportDistance = config.teleportDistance;
-        enemy.userData.teleportCooldown = config.teleportCooldown;
-        enemy.userData.lastTeleportTime = 0;
-    }
-    
-    if (enemyType === ENEMY_TYPES.HEALER) {
-        enemy.userData.healRange = config.healRange;
-        enemy.userData.healAmount = config.healAmount;
-        enemy.userData.healCooldown = config.healCooldown;
-        enemy.userData.lastHealTime = 0;
+        // Add shadow properties
+        enemy.castShadow = true;
+        enemy.receiveShadow = true;
         
-        // Create heal aura visual
-        addHealAuraToEnemy(enemy);
+        // Add enemy metadata
+        enemy.userData = {
+            type: enemyType,
+            health: config.health,
+            maxHealth: config.health,
+            speed: config.speed,
+            damage: config.damage,
+            attackRange: config.attackRange,
+            lastAttackTime: 0,
+            attackCooldown: config.attackCooldown,
+            stuckCounter: 0, // NEW: Add counter for detecting stuck enemies
+            lastPosition: enemy.position.clone() // NEW: Track position for stuck detection
+        };
+        
+        // Add type-specific properties as before...
+        
+        // Add enemy to the scene and tracking arrays
+        scene.add(enemy);
+        enemies.push(enemy);
+        activeEnemies.push(enemy);
+        
+        return enemy;
+    }
+}
+
+// NEW: Function to get a valid spawn position that avoids obstacles
+function getValidEnemySpawnPosition(enemyWidth) {
+    const spawnRadius = 100; // Consistent with existing spawn radius
+    let attempts = 0;
+    let position;
+    
+    // Try up to 10 times to find a valid position
+    do {
+        attempts++;
+        const angle = Math.random() * Math.PI * 2;
+        position = new THREE.Vector3(
+            Math.cos(angle) * spawnRadius,
+            0,
+            Math.sin(angle) * spawnRadius
+        );
+    } while (isPositionInsideObstacle(position, enemyWidth) && attempts < 10);
+    
+    // If we couldn't find a valid position after 10 attempts, just use the last attempt
+    // but increase the radius to hopefully avoid obstacles
+    if (attempts >= 10) {
+        const angle = Math.random() * Math.PI * 2;
+        position = new THREE.Vector3(
+            Math.cos(angle) * (spawnRadius + 10),
+            0,
+            Math.sin(angle) * (spawnRadius + 10)
+        );
     }
     
-    if (enemyType === ENEMY_TYPES.ELITE) {
-        // Randomly select an elite type
-        const eliteTypes = ['speed', 'damage', 'health', 'range'];
-        enemy.userData.eliteType = eliteTypes[Math.floor(Math.random() * eliteTypes.length)];
+    return position;
+}
+
+// NEW: Function to check if a position is inside any obstacle
+function isPositionInsideObstacle(position, entityWidth) {
+    // Check distance from road blockades
+    for (const blockade of roadBlockades) {
+        if (!blockade || !blockade.position) continue;
         
-        // Apply elite modifiers
-        applyEliteModifiers(enemy);
+        // Use a generous collision buffer
+        const blockadeRadius = 12; // Large enough to cover most blockade elements
+        const distance = position.distanceTo(blockade.position);
         
-        // Add special attack cooldown
-        enemy.userData.specialAttackCooldown = config.specialAttackCooldown;
-        enemy.userData.lastSpecialAttackTime = 0;
+        if (distance < blockadeRadius + entityWidth) {
+            return true; // Inside or too close to a blockade
+        }
     }
     
-    // Add enemy to the scene and tracking arrays
-    scene.add(enemy);
-    enemies.push(enemy);
-    activeEnemies.push(enemy);
+    // Check other types of obstacles (abandoned cars, gas station, etc.)
+    // Abandoned cars
+    for (const car of abandonedCars) {
+        if (!car || !car.userData) continue;
+        
+        const carRadius = car.userData.collisionRadius || 4;
+        const distance = position.distanceTo(car.position);
+        
+        if (distance < carRadius + entityWidth) {
+            return true; // Too close to a car
+        }
+    }
     
-    return enemy;
+    // Environment objects (rocks, trees)
+    if (scene.userData.environmentalColliders) {
+        for (const collider of scene.userData.environmentalColliders) {
+            if (collider.type === 'circle' || collider.type === 'cylinder') {
+                const distance = position.distanceTo(collider.position);
+                if (distance < collider.radius + entityWidth) {
+                    return true; // Too close to an environmental object
+                }
+            }
+        }
+    }
+    
+    return false; // Position is valid
 }
 
 // Function to update enemies
@@ -9452,39 +12138,82 @@ function spawnMegaBoss(config) {
 }
 
 // Function to move enemy
-function moveEnemy(enemy, direction, speed = null) {
-    const moveSpeed = speed || enemy.userData.speed;
-    const movement = direction.clone().multiplyScalar(moveSpeed);
+function moveEnemy(enemy, direction, overrideSpeed) {
+    const speed = overrideSpeed || enemy.userData.speed;
     
     // Store original position for collision detection
-    const originalX = enemy.position.x;
-    const originalZ = enemy.position.z;
+    const originalPosition = enemy.position.clone();
     
-    // Try the direct movement first
-    enemy.position.x += movement.x;
-    enemy.position.z += movement.z;
+    // Move in the specified direction
+    const movement = direction.clone().multiplyScalar(speed);
     
-    // Boundary check
-    const boundary = 112.5;
-    enemy.position.x = Math.max(-boundary, Math.min(boundary, enemy.position.x));
-    enemy.position.z = Math.max(-boundary, Math.min(boundary, enemy.position.z));
+    // Try direct movement
+    const newPosition = originalPosition.clone().add(movement);
     
-    // Check for collisions
-    if (checkEnemyCollisions(enemy, originalX, originalZ)) {
-        // Collision detected, revert to original position
-        enemy.position.x = originalX;
-        enemy.position.z = originalZ;
+    // NEW: Check if new position would put enemy inside an obstacle
+    if (!isPositionInsideObstacle(newPosition, enemy.geometry.parameters.width/2)) {
+        // Safe to move directly
+        enemy.position.copy(newPosition);
+        // Reset stuck counter on successful movement
+        enemy.userData.stuckCounter = 0;
+    } else {
+        // NEW: Try alternative directions to navigate around obstacle
+        // Try left, right, and various angles until we find a valid path
+        const alternateDirections = [
+            // 45 degrees left
+            new THREE.Vector3().copy(direction).applyAxisAngle(new THREE.Vector3(0,1,0), Math.PI/4).normalize(),
+            // 45 degrees right
+            new THREE.Vector3().copy(direction).applyAxisAngle(new THREE.Vector3(0,1,0), -Math.PI/4).normalize(),
+            // 90 degrees left
+            new THREE.Vector3().copy(direction).applyAxisAngle(new THREE.Vector3(0,1,0), Math.PI/2).normalize(),
+            // 90 degrees right
+            new THREE.Vector3().copy(direction).applyAxisAngle(new THREE.Vector3(0,1,0), -Math.PI/2).normalize()
+        ];
         
-        // Try to navigate around the obstacle with obstacle avoidance
-        applyObstacleAvoidance(enemy, direction, movement, moveSpeed);
+        let foundValidPath = false;
+        
+        for (const altDirection of alternateDirections) {
+            const altMovement = altDirection.clone().multiplyScalar(speed);
+            const altPosition = originalPosition.clone().add(altMovement);
+            
+            if (!isPositionInsideObstacle(altPosition, enemy.geometry.parameters.width/2)) {
+                // Found a valid path, take it
+                enemy.position.copy(altPosition);
+                foundValidPath = true;
+                
+                // Reset stuck counter on successful movement
+                enemy.userData.stuckCounter = 0;
+                break;
+            }
+        }
+        
+        // If we still couldn't find a valid path, detect if enemy is stuck
+        if (!foundValidPath) {
+            enemy.userData.stuckCounter = (enemy.userData.stuckCounter || 0) + 1;
+            
+            // If enemy has been stuck for multiple frames, try more drastic measures
+            if (enemy.userData.stuckCounter > 30) { // After ~1 second of being stuck
+                // Try teleporting slightly away from current position toward player
+                const toPlayer = new THREE.Vector3().subVectors(player.position, enemy.position).normalize();
+                
+                // Try moving outward and ahead
+                const jumpDistance = 3 + (enemy.userData.stuckCounter > 60 ? 3 : 0); // Jump further if really stuck
+                const jumpPosition = enemy.position.clone().add(toPlayer.multiplyScalar(jumpDistance));
+                
+                // Final safety check on jump position
+                if (!isPositionInsideObstacle(jumpPosition, enemy.geometry.parameters.width/2)) {
+                    enemy.position.copy(jumpPosition);
+                    enemy.userData.stuckCounter = 0;
+                }
+            }
+        }
     }
     
-    // Store the last successful movement direction for future obstacle avoidance
-    if (!enemy.userData.lastSuccessfulDirection) {
-        enemy.userData.lastSuccessfulDirection = direction.clone();
-    } else if (!direction.equals(enemy.userData.lastSuccessfulDirection)) {
-        enemy.userData.lastSuccessfulDirection.copy(direction);
-    }
+    // Update last position for future stuck detection
+    enemy.userData.lastPosition = enemy.position.clone();
+    
+    // Keep enemies at ground level
+    enemy.position.y = enemy.geometry.parameters.height / 2;
 }
 
 // Function to add road surface beneath the gas station in createAbandonedGasStation
@@ -13165,33 +15894,75 @@ function createAmmoDisplay() {
     ammoContainer.style.padding = '10px';
     ammoContainer.style.borderRadius = '5px';
     
+    // THIS LINE NEEDS TO CHANGE - use ammoCount instead of ammoDisplay
     const ammoDisplay = document.createElement('div');
-    ammoDisplay.id = 'ammoDisplay';
+    ammoDisplay.id = 'ammoCount'; // <-- CHANGE HERE from 'ammoDisplay' to 'ammoCount'
     ammoDisplay.style.color = 'white';
     ammoDisplay.style.fontSize = '24px';
     ammoDisplay.style.fontWeight = 'bold';
-    ammoDisplay.textContent = `${pistolAmmo}/${pistolMaxAmmo}`;
+    
+    // Initialize based on currently selected weapon
+    const currentItem = inventory[selectedSlot];
+    if (currentItem === WEAPON_TYPES.PISTOL) {
+        ammoDisplay.textContent = `${pistolAmmo}/${pistolMaxAmmo}`;
+    } else if (currentItem === WEAPON_TYPES.SHOTGUN) {
+        ammoDisplay.textContent = `${shotgunAmmo}/${shotgunMaxAmmo}`;
+    } else if (currentItem === WEAPON_TYPES.ASSAULT_RIFLE) {
+        ammoDisplay.textContent = `${assaultRifleAmmo}/${assaultRifleMaxAmmo}`;
+    }
     
     ammoContainer.appendChild(ammoDisplay);
     hud.appendChild(ammoContainer);
     
-    // Set initial visibility based on selected weapon
-    ammoContainer.style.display = (inventory[selectedSlot] === WEAPON_TYPES.PISTOL) ? 'block' : 'none';
+    // Set initial visibility based on selected weapon type
+    ammoContainer.style.display = (currentItem === WEAPON_TYPES.PISTOL || 
+                                  currentItem === WEAPON_TYPES.SHOTGUN || 
+                                  currentItem === WEAPON_TYPES.ASSAULT_RIFLE) ? 'block' : 'none';
 }
 
-// Update ammo display
+// Function to update ammo display based on current weapon
 function updateAmmoDisplay() {
-    const ammoElement = document.getElementById('ammoDisplay');
-    if (!ammoElement) return;
+    const ammoDisplay = document.getElementById('ammoCount');
+    const ammoContainer = document.getElementById('ammoContainer');
     
+    if (!ammoDisplay) return;
+    
+    // Check which weapon is currently selected
     const currentItem = inventory[selectedSlot];
     
+    // Update ammo count based on weapon type
     if (currentItem === WEAPON_TYPES.PISTOL) {
-        ammoElement.textContent = `${pistolAmmo}/${pistolMaxAmmo}`;
-    } else if (currentItem === WEAPON_TYPES.SHOTGUN) {
-        ammoElement.textContent = `${shotgunAmmo}/${shotgunMaxAmmo}`;
-    } else {
-        ammoElement.textContent = '';
+        ammoDisplay.textContent = `${pistolAmmo}/${pistolMaxAmmo}`;
+    } 
+    else if (currentItem === WEAPON_TYPES.SHOTGUN) {
+        ammoDisplay.textContent = `${shotgunAmmo}/${shotgunMaxAmmo}`;
+    } 
+    else if (currentItem === WEAPON_TYPES.ASSAULT_RIFLE) {
+        ammoDisplay.textContent = `${assaultRifleAmmo}/${assaultRifleMaxAmmo}`;
+    }
+    else if (currentItem === WEAPON_TYPES.SNIPER_RIFLE) {
+        ammoDisplay.textContent = `${sniperRifleAmmo}/${sniperRifleMaxAmmo}`;
+    }
+    else if (currentItem === WEAPON_TYPES.CROSSBOW) {
+        ammoDisplay.textContent = `${crossbowAmmo}/${crossbowMaxAmmo}`;
+    }
+    else if (currentItem === WEAPON_TYPES.MINIGUN) {
+        ammoDisplay.textContent = `${minigunAmmo}/${minigunMaxAmmo}`;
+    }
+    else if (currentItem === WEAPON_TYPES.ROCKET_LAUNCHER) {
+        ammoDisplay.textContent = `${rocketLauncherAmmo}/${rocketLauncherMaxAmmo}`;
+    }
+    else {
+        // No ammo display for other items
+        if (ammoContainer) {
+            ammoContainer.style.display = 'none';
+        }
+        return;
+    }
+    
+    // Show ammo container if it's a weapon with ammo
+    if (ammoContainer) {
+        ammoContainer.style.display = 'block';
     }
 }
 
