@@ -18,8 +18,14 @@ Last Stand: Apocalypse is a wave-based first-person shooter where players must s
 
 - **First-person combat system** with multiple weapons:
   - Knife for melee attacks
-  - Pistol with ammunition management
-  - Consumable items (medkits, shield boosters)
+  - Pistol with standard firing mechanism
+  - Shotgun with spread damage and range falloff
+  - Assault Rifle with rapid fire capability
+  - Sniper Rifle with scope functionality
+  - Crossbow with retrievable bolts
+  - Minigun with spin-up/down mechanics and overheating system
+  - Rocket Launcher with area explosion damage
+  - Ammunition management and reloading for all weapons
   
 - **Extensive enemy variety** with unique behaviors:
   - Basic enemies (standard movement and attacks)
@@ -37,7 +43,14 @@ Last Stand: Apocalypse is a wave-based first-person shooter where players must s
     - The Phantom (elusive boss with clones and void zones)
     - The Mega Boss (final challenge with devastating abilities)
 
-- **Round progression** with increasing difficulty
+- **Dynamic day-night cycle**:
+  - Sun progresses across the sky during rounds 1-10
+  - Moon rises from rounds 10-20
+  - Dynamic lighting affecting visibility and gameplay
+  - Automatic lamp activation during night rounds
+  - Sky color changes based on time of day
+
+- **Round progression** with increasing difficulty:
   - Multiple rounds with escalating enemy counts and types
   - Special boss rounds at key intervals
   - Victory screen upon completion
@@ -46,15 +59,16 @@ Last Stand: Apocalypse is a wave-based first-person shooter where players must s
   - Player health and shield mechanics
   - Ammunition management and reloading
   - Inventory system with 10 slots for items
-  - Coin-based economy with shop system
-  - Collision detection for all objects in the world
+  - Coin-based economy with categorized shop system
+  - Advanced collision detection for projectiles and obstacles
   - Particle effects for impacts, explosions and environment
-  - Damage indicators when hit
+  - Hit markers and damage indicators
+  - Enemy AI with obstacle avoidance
 
 - **Responsive UI**:
   - Dynamic HUD showing health, shield, ammo and coins
-  - Inventory display system
-  - Shop interface for purchasing items
+  - Inventory display system with proper item icons
+  - Categorized shop interface for purchasing weapons and consumables
   - Pause menu with game controls
   - Character customization options
 
@@ -80,15 +94,17 @@ Access the game directly at:
 - **WASD** - Movement
 - **Mouse** - Look around
 - **Left Click** - Attack/Shoot
+- **Right Click** - Toggle sniper scope
 - **1-5** - Switch weapons/items
-- **R** - Reload pistol
-- **E** - Interact/Use item
+- **R** - Reload weapon
 - **Tab** - Open inventory
 - **B** - Open shop (when available)
 - **P** - Pause game
 - **Esc** - Exit pointer lock
 - **F11** - Toggle fullscreen
 - **F** - Toggle FPS display
+- **Shift** - Crouch (experimental)
+- **Space** - Jump (experimental)
 
 ## Game Mechanics
 
@@ -99,6 +115,7 @@ Access the game directly at:
 - Use the shop between rounds to upgrade your equipment
 - Adapt your strategy for different enemy types
 - Boss battles require specific tactics to overcome
+- Day becomes night as rounds progress, changing gameplay dynamics
 
 ## Project Structure
 
@@ -123,7 +140,7 @@ This project was developed for the Introduction to Computer Graphics course at U
 - Camera manipulation
 - Collision detection
 - Animation systems
-- Lighting effects (point lights, ambient lighting)
+- Lighting effects (point lights, ambient lighting, day-night cycle)
 - Particle systems
 - Materials and textures
 - User interface integration with 3D environments

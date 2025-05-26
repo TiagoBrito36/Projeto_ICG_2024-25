@@ -337,11 +337,9 @@ canvas {
     align-items: center;
     cursor: pointer;
     transition: all 0.2s;
-    /* Add this to hide content */
-    font-size: 0;
+    font-size: 24px; /* Add this to match hotbar icon size */
 }
 
-/* Add a subtle background color change instead */
 .inventory-slot:not(.empty) {
     background-color: rgba(74, 47, 47, 0.5);
 }

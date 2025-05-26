@@ -279,6 +279,10 @@ const PISTOL_IDLE_POSITION = new THREE.Vector3(0.3, -0.3, -0.5);
 const PISTOL_IDLE_ROTATION = new THREE.Euler(0, Math.PI, 0);
 let pistolAnimationInProgress = false;
 let pistolAnimationId = null;
+let enemySpawnTimeout = null;
+let spawnQueueActive = false;
+let lastEnemySpawnTime = 0;
+let stuckDetectionInterval = null;
 
 // Add the missing shuffleArray function
 function shuffleArray(array) {
@@ -2059,11 +2063,7 @@ function startMinigunSpin() {
 }
 
 function stopMinigunSpin() {
-    // Set both flags to ensure firing stops
-    minigunSpinning = false;
-    mouseIsDown = false;
-    
-    // Clear firing interval immediately
+    // Stop firing immediately but keep spinning for a bit
     if (minigunFireInterval) {
         clearInterval(minigunFireInterval);
         minigunFireInterval = null;
@@ -2075,13 +2075,14 @@ function stopMinigunSpin() {
         minigunSpinTimeout = null;
     }
     
-    // Schedule cooldown to start after spin-down animation completes
+    // Set a timeout to actually stop spinning after 1 second
     minigunSpinTimeout = setTimeout(() => {
-        startMinigunCooldown();
+        // Only now set spinning to false so it begins to decelerate
+        minigunSpinning = false;
         
-        // Make sure spin speed is completely reset to zero
-        minigunSpinSpeed = 0;
-    }, 1500);
+        // Start minigun cooldown for heat reduction
+        startMinigunCooldown();
+    }, 1000);
 }
 
 function startMinigunCooldown() {
@@ -3119,17 +3120,19 @@ function getItemSymbol(item) {
     switch(itemType) {
         case WEAPON_TYPES.KNIFE: return '🔪'; 
         case WEAPON_TYPES.PISTOL: return '🔫';
-        case WEAPON_TYPES.SHOTGUN: return '🦾'; // Using a different emoji for shotgun
-        case WEAPON_TYPES.ASSAULT_RIFLE: return '🎯'; // Using target emoji for assault rifle
-        case WEAPON_TYPES.SNIPER_RIFLE: return '🎭';
+        case WEAPON_TYPES.SHOTGUN: return '🔫'; // Updated to match shop icon
+        case WEAPON_TYPES.ASSAULT_RIFLE: return '🔫'; // Updated to match shop icon
+        case WEAPON_TYPES.SNIPER_RIFLE: return '🔫'; // Updated to match shop icon
         case WEAPON_TYPES.CROSSBOW: return '🏹';
+        case WEAPON_TYPES.MINIGUN: return '🔫'; // Added missing icon
+        case WEAPON_TYPES.ROCKET_LAUNCHER: return '🚀'; // Added missing icon
         case ITEM_TYPES.BANDAGE: return '🩹';
         case ITEM_TYPES.MEDKIT: return '🧰';
         case ITEM_TYPES.MINI_SHIELD: return '🛡️';
         case ITEM_TYPES.BIG_SHIELD: return '🔷';
         default: return '?';
     }
-}
+}  
 
 // Function to select an inventory slot
 function selectInventorySlot(slotIndex) {
@@ -6448,7 +6451,6 @@ function initDayNightSystem() {
     updateDayNightCycle(1); // Set initial state for round 1
 }
 
-// Update day-night cycle based on current round
 function updateDayNightCycle(round) {
     // Calculate time based on round (12:00 at round 1, 00:00 at round 20)
     const minutesPerRound = 36; // (12 hours * 60 minutes) / 20 rounds = 36 minutes per round
@@ -6460,44 +6462,82 @@ function updateDayNightCycle(round) {
     gameTime.timeString = `${String(gameTime.hour).padStart(2, '0')}:${String(gameTime.minute).padStart(2, '0')}`;
     gameTime.isNight = gameTime.hour >= 18 || gameTime.hour < 6;
     
-    // Calculate sun and moon positions based on time
-    // Adjust the angle calculation to correctly position based on 12:00 -> 00:00
-    const dayProgress = ((gameTime.hour + gameTime.minute / 60) % 24) / 24;
-    const sunAngle = Math.PI * (dayProgress * 2 - 0.5); // Start at noon (high point)
-    const moonAngle = sunAngle + Math.PI; // Moon is opposite to sun
+    // Calculate sun position - visible only during rounds 1-10 (daylight hours)
+    if (round <= 10) {
+        // Sun progress from high noon (round 1) to sunset (round 10)
+        const sunProgress = (round - 1) / 9; // 0 to 1
+        const sunAngle = Math.PI * (0.5 - sunProgress); // From π/2 (overhead) to 0 (horizon)
+        
+        // Position sun
+        const sunDistance = 350;
+        sunObject.position.x = Math.cos(sunAngle) * sunDistance;
+        sunObject.position.y = Math.sin(sunAngle) * sunDistance;
+        sunObject.position.z = 0;
+        
+        // Make sun visible
+        sunObject.visible = true;
+        
+        // Set sun light intensity based on height
+        const sunHeight = Math.sin(sunAngle);
+        sunLight.intensity = Math.max(0, Math.min(1, sunHeight * 1.5));
+        sunLight.position.copy(sunObject.position.clone().normalize().multiplyScalar(150));
+    } else {
+        // After round 10, sun is below horizon and not visible
+        sunObject.visible = false;
+        sunLight.intensity = 0;
+    }
     
-    // Position sun (larger distance for larger objects)
-    const sunDistance = 350;
-    sunObject.position.x = Math.cos(sunAngle) * sunDistance;
-    sunObject.position.y = Math.sin(sunAngle) * sunDistance;
-    sunObject.position.z = 0;
+    // Calculate moon position - starts rising at round 10, peaks at round 20
+    if (round >= 10) {
+        // Moon progress from moonrise (round 10) to high moon (round 20)
+        const moonProgress = Math.min(1, (round - 10) / 10); // 0 to 1
+        const moonAngle = Math.PI * moonProgress; // From 0 (horizon) to π (overhead)
+        
+        // Position moon
+        const moonDistance = 350;
+        moonObject.position.x = -Math.cos(moonAngle) * moonDistance; // Opposite side from sun
+        moonObject.position.y = Math.sin(moonAngle) * moonDistance;
+        moonObject.position.z = 0;
+        
+        // Make moon visible
+        moonObject.visible = true;
+        
+        // Set moon light intensity based on height
+        const moonHeight = Math.sin(moonAngle);
+        moonLight.intensity = Math.max(0, Math.min(0.3, moonHeight * 0.6));
+        moonLight.position.copy(moonObject.position.clone().normalize().multiplyScalar(150));
+    } else {
+        // Before round 10, moon is below horizon
+        moonObject.visible = false;
+        moonLight.intensity = 0;
+    }
     
-    // Position moon (larger distance for larger objects)
-    const moonDistance = 350;
-    moonObject.position.x = Math.cos(moonAngle) * moonDistance;
-    moonObject.position.y = Math.sin(moonAngle) * moonDistance;
-    moonObject.position.z = 0;
+    // Special case for round 10 - both sun and moon are at opposite horizons
+    if (round === 10) {
+        // Sun at western horizon (setting)
+        sunObject.position.x = 350;
+        sunObject.position.y = 0;
+        sunObject.visible = true;
+        sunLight.intensity = 0.2;
+        
+        // Moon at eastern horizon (rising)
+        moonObject.position.x = -350;
+        moonObject.position.y = 0;
+        moonObject.visible = true;
+        moonLight.intensity = 0.1;
+    }
     
-    // Position directional lights to match sun and moon
-    sunLight.position.copy(sunObject.position.clone().normalize().multiplyScalar(150));
-    moonLight.position.copy(moonObject.position.clone().normalize().multiplyScalar(150));
-    
-    // Set light intensities based on sun/moon position
-    const sunHeight = Math.sin(sunAngle);
-    const moonHeight = Math.sin(moonAngle);
-    
-    // Calculate sun and moon light intensities based on height above horizon
-    const sunIntensity = Math.max(0, Math.min(1, sunHeight * 1.5));
-    const moonIntensity = Math.max(0, Math.min(0.3, moonHeight * 0.6));
-    
-    sunLight.intensity = sunIntensity;
-    moonLight.intensity = moonIntensity;
-    
-    // Manage sky colors
-    updateSkyColor(sunHeight, moonHeight);
+    // Update sky color based on sun and moon positions
+    updateSkyColor(
+        round <= 10 ? Math.sin(Math.PI * (0.5 - (round - 1) / 9)) : -0.5, // Sun height
+        round >= 10 ? Math.sin(Math.PI * ((round - 10) / 10)) : -0.5       // Moon height
+    );
     
     // Update lamps based on time
-    updateLamps(sunHeight, moonHeight);
+    updateLamps(
+        round <= 10 ? Math.sin(Math.PI * (0.5 - (round - 1) / 9)) : -0.5,
+        round >= 10 ? Math.sin(Math.PI * ((round - 10) / 10)) : -0.5
+    );
 }
 
 // Function to update sky color based on sun position
@@ -8207,9 +8247,9 @@ document.addEventListener('mousedown', (event) => {
 document.addEventListener('mouseup', (event) => {
     if (event.button === 0) { // Left mouse button
         mouseIsDown = false; // Track mouse up state
-        if (gameStarted && 
+        if (gameStarted && !isPaused && isLocked && 
             inventory[selectedSlot] === WEAPON_TYPES.MINIGUN) {
-            // Stop minigun spinning
+            // Stop minigun spinning with same conditions as mousedown
             stopMinigunSpin();
         }
     }
@@ -8308,10 +8348,10 @@ function updateMinigunSpin() {
         // Accelerate spin speed
         minigunSpinSpeed = Math.min(1, minigunSpinSpeed + 0.02);
     } else {
-        // Decelerate spin speed
-        minigunSpinSpeed = Math.max(0, minigunSpinSpeed - 0.01);
+        // Decelerate spin speed - make this much faster (0.1 instead of 0.01)
+        minigunSpinSpeed = Math.max(0, minigunSpinSpeed - 0.1);
         
-        // If we're close to stopping, just stop completely for cleaner state
+        // If we're close to stopping, just stop completely
         if (minigunSpinSpeed < 0.01) {
             minigunSpinSpeed = 0;
         }
@@ -8323,7 +8363,6 @@ function updateMinigunSpin() {
         barrelGroup.rotation.z = minigunBarrelRotation;
     }
 }
-
 
 // Function that updates minigun heat indicator
 function updateMinigunHeat() {
@@ -8745,10 +8784,12 @@ function startCountdown(seconds, callback) {
 
 // Function to start the next round
 function startNextRound() {
+    // Increment round counter
     currentRound++;
     
+    // Check if we've reached the end of all rounds
     if (currentRound > totalRounds) {
-        // Game completed
+        // Game completed - show victory screen
         showVictoryScreen();
         return;
     }
@@ -8756,7 +8797,7 @@ function startNextRound() {
     // Update day-night cycle for the new round
     updateDayNightCycle(currentRound);
     
-    // Update round display
+    // Update round display in UI
     document.getElementById('roundDisplay').textContent = `Round ${currentRound}/${totalRounds}`;
     
     // Get current round configuration
@@ -8776,8 +8817,39 @@ function startNextRound() {
     // Start round
     isRoundActive = true;
     
+    // Start stuck detection to prevent rounds from getting stuck
+    startRoundStuckDetection();
+    
+    // Show round start notification
+    showNotification(`Round ${currentRound} Started!`, 3000);
+    
+    // Reset spawn queue active flag
+    spawnQueueActive = false;
+    
+    // Reset last enemy spawn time
+    lastEnemySpawnTime = performance.now();
+    
+    // Award coins for completing previous round (except first round)
+    if (currentRound > 1) {
+        const coinsAwarded = Math.floor(10 + (currentRound - 1) * 5);
+        playerCoins += coinsAwarded;
+        updateCoinDisplay();
+        showNotification(`+${coinsAwarded} coins awarded!`, 2000);
+    }
+    
     // Spawn enemies based on round configuration
     spawnEnemiesForRound(config);
+    
+    // Special handling for boss rounds
+    if (currentRound === 5) {
+        showNotification("WARNING: Boss approaching...", 5000);
+    } else if (currentRound === 10) {
+        showNotification("WARNING: The Warden approaches...", 5000);
+    } else if (currentRound === 15) {
+        showNotification("WARNING: The Phantom materializes...", 5000);
+    } else if (currentRound === 20) {
+        showNotification("WARNING: The Overlord rises...", 5000);
+    }
 }
 
 // Function to handle enemy spawning for a round
@@ -8854,6 +8926,43 @@ function spawnEnemiesFromQueue(queue) {
     setTimeout(() => {
         spawnEnemiesFromQueue(queue);
     }, config.spawnDelay);
+}
+
+// Add a stuck detection mechanism when a round starts
+function startRoundStuckDetection() {
+    // Clear any existing interval
+    if (stuckDetectionInterval) {
+        clearInterval(stuckDetectionInterval);
+    }
+    
+    // Check every 10 seconds if spawning is stuck
+    stuckDetectionInterval = setInterval(() => {
+        // If spawning is active but hasn't happened in over 30 seconds
+        if (spawnQueueActive && (performance.now() - lastEnemySpawnTime > 30000)) {
+            console.warn("Enemy spawning appears stuck - resetting spawn system");
+            
+            // Clear the spawn timeout to ensure it doesn't fire later
+            if (enemySpawnTimeout) {
+                clearTimeout(enemySpawnTimeout);
+                enemySpawnTimeout = null;
+            }
+            
+            // Flag as no longer active
+            spawnQueueActive = false;
+            
+            // If no enemies are active, force end round
+            if (activeEnemies.length === 0) {
+                showNotification("Fixed stuck round - proceeding to next round", 3000);
+                endRound();
+            }
+        }
+        
+        // Also check if round is active but no enemies in 30 seconds (another stuck case)
+        if (isRoundActive && activeEnemies.length === 0 && !spawnQueueActive) {
+            showNotification("No enemies detected - proceeding to next round", 3000);
+            endRound();
+        }
+    }, 10000);
 }
 
 // Function to create the First Boss (Round 5) with unique abilities
