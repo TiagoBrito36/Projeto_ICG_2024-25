@@ -80,7 +80,13 @@ const gameStats = {
         normal: 0,
         tank: 0,
         ranged: 0,
-        boss: 0
+        speeder: 0,
+        exploder: 0,
+        shielder: 0,
+        teleporter: 0,
+        healer: 0,
+        elite: 0,
+        boss: 0 // This will now track all boss types combined
     }
 };
 
@@ -160,49 +166,49 @@ const SHOP_ITEMS = [
         id: WEAPON_TYPES.PISTOL,
         name: "Pistol",
         description: "Standard sidearm with decent damage and rate of fire.",
-        price: 50,
+        price: 15,
         icon: "🔫"
     },
     {
         id: WEAPON_TYPES.SHOTGUN,
         name: "Shotgun",
         description: "Powerful at close range with spread damage.",
-        price: 150,
+        price: 50,
         icon: "🔫"
     },
     {
         id: WEAPON_TYPES.ASSAULT_RIFLE,
         name: "Assault Rifle",
         description: "Balanced weapon with rapid fire and moderate damage.",
-        price: 250,
+        price: 30,
         icon: "🔫"
     },
     {
         id: WEAPON_TYPES.SNIPER_RIFLE,
         name: "Sniper Rifle",
         description: "Long-range precision with high damage. Right-click to scope.",
-        price: 350,
+        price: 35,
         icon: "🔫"
     },
     {
         id: WEAPON_TYPES.CROSSBOW,
         name: "Crossbow",
         description: "Silent and deadly, with retrievable bolts.",
-        price: 200,
+        price: 35,
         icon: "🏹"
     },
     {
         id: WEAPON_TYPES.MINIGUN,
         name: "Minigun",
         description: "Extremely high rate of fire, but watch for overheating.",
-        price: 400,
+        price: 150,
         icon: "🔫"
     },
     {
         id: WEAPON_TYPES.ROCKET_LAUNCHER,
         name: "Rocket Launcher",
         description: "Explosive area damage. Be careful not to hit yourself!",
-        price: 500,
+        price: 175,
         icon: "🚀"
     }
 ];
@@ -6465,8 +6471,8 @@ function updateDayNightCycle(round) {
     // Calculate sun position - visible only during rounds 1-10 (daylight hours)
     if (round <= 10) {
         // Sun progress from high noon (round 1) to sunset (round 10)
-        const sunProgress = (round - 1) / 9; // 0 to 1
-        const sunAngle = Math.PI * (0.5 - sunProgress); // From π/2 (overhead) to 0 (horizon)
+        const sunProgress = (round - 1) / 9;
+        const sunAngle = Math.PI * (0.5 - sunProgress);
         
         // Position sun
         const sunDistance = 350;
@@ -6490,12 +6496,15 @@ function updateDayNightCycle(round) {
     // Calculate moon position - starts rising at round 10, peaks at round 20
     if (round >= 10) {
         // Moon progress from moonrise (round 10) to high moon (round 20)
-        const moonProgress = Math.min(1, (round - 10) / 10); // 0 to 1
-        const moonAngle = Math.PI * moonProgress; // From 0 (horizon) to π (overhead)
+        const moonProgress = Math.min(1, (round - 10) / 10);
         
-        // Position moon
+        // FIX: Change angle calculation so moon starts at horizon (0°) at round 10
+        // and rises to zenith (90°) at round 20
+        const moonAngle = Math.PI * moonProgress / 2; // 0 to π/2
+        
+        // Position moon - use cosine and sine differently to make moon rise from horizon
         const moonDistance = 350;
-        moonObject.position.x = -Math.cos(moonAngle) * moonDistance; // Opposite side from sun
+        moonObject.position.x = -Math.cos(moonAngle) * moonDistance;
         moonObject.position.y = Math.sin(moonAngle) * moonDistance;
         moonObject.position.z = 0;
         
@@ -8433,14 +8442,8 @@ document.getElementById('resumeButton').addEventListener('click', () => {
 
 // Update the return to main menu button handler
 document.getElementById('returnToMainButton').addEventListener('click', () => {
-    // Remove any existing handler to avoid duplicate listeners
-    document.getElementById('returnToMainButton').replaceWith(
-        document.getElementById('returnToMainButton').cloneNode(true)
-    );
-    document.getElementById('returnToMainButton').addEventListener('click', returnToMainMenu);
-    
-    // Call the function
-    returnToMainMenu();
+    // Simply reload the entire page instead of trying to clean up resources
+    window.location.reload();
 });
 
 // Consolidated function to handle return to main menu with loading screen
@@ -13999,53 +14002,81 @@ function createShield(position, radius, color = 0xff3300, duration = 3000) {
 
 // Function to handle enemy defeat
 function defeatEnemy(enemy) {
-    // Update kill statistics
-    switch (enemy.userData.type) {
+    // Add coins for defeating the enemy
+    const baseCoins = 1;
+    let coinReward = baseCoins;
+    let enemyType = enemy.userData.type;
+    
+    // Set reward based on enemy type
+    switch (enemyType) {
         case ENEMY_TYPES.NORMAL:
+            coinReward = 1;
             gameStats.kills.normal++;
-            playerCoins += 1; // Add coins for normal enemy
             break;
         case ENEMY_TYPES.TANK:
+            coinReward = 3;
             gameStats.kills.tank++;
-            playerCoins += 5; // Add coins for tank enemy
             break;
         case ENEMY_TYPES.RANGED:
+            coinReward = 2;
             gameStats.kills.ranged++;
-            playerCoins += 3; // Add coins for ranged enemy
             break;
+        case ENEMY_TYPES.SPEEDER:
+            coinReward = 2;
+            gameStats.kills.speeder++;
+            break;
+        case ENEMY_TYPES.EXPLODER:
+            coinReward = 3;
+            gameStats.kills.exploder++;
+            break;
+        case ENEMY_TYPES.SHIELDER:
+            coinReward = 4;
+            gameStats.kills.shielder++;
+            break;
+        case ENEMY_TYPES.TELEPORTER:
+            coinReward = 4;
+            gameStats.kills.teleporter++;
+            break;
+        case ENEMY_TYPES.HEALER:
+            coinReward = 5;
+            gameStats.kills.healer++;
+            break;
+        case ENEMY_TYPES.ELITE:
+            coinReward = 6;
+            gameStats.kills.elite++;
+            break;
+        // All boss types aggregated under 'boss' category
         case ENEMY_TYPES.BOSS:
+        case ENEMY_TYPES.WARDEN_BOSS:
+        case ENEMY_TYPES.PHANTOM_BOSS:
+        case ENEMY_TYPES.MEGA_BOSS:
+            coinReward = 25;
             gameStats.kills.boss++;
-            playerCoins += 10; // Add coins for boss enemy
             break;
     }
-
-    // Make sure to update the coin display immediately
-    updateCoinDisplay();
     
-    // Make sure to log the coin value for debugging
-    console.log("Player coins: " + playerCoins);
+    // Add coin reward
+    if (!infiniteMoneyCheat) {
+        playerCoins += coinReward;
+        updateCoinDisplay();
+    }
     
-    // Remove from activeEnemies array
+    // Remove enemy from active arrays
     const index = activeEnemies.indexOf(enemy);
     if (index !== -1) {
         activeEnemies.splice(index, 1);
     }
-    
-    // Also remove from master enemies array
-    const masterIndex = enemies.indexOf(enemy);
-    if (masterIndex !== -1) {
-        enemies.splice(masterIndex, 1);
-    }
-    
-    // Update enemies remaining count based on how many are left in the active array
-    const remainingEnemies = activeEnemies.length;
-    document.getElementById('enemiesRemaining').textContent = `Enemies: ${remainingEnemies}`;
     
     // Create defeat animation
     createEnemyDefeatAnimation(enemy);
     
     // Remove enemy from scene
     scene.remove(enemy);
+    
+    // Check if round is complete
+    if (activeEnemies.length === 0 && !spawnQueueActive) {
+        endRound();
+    }
 }
 
 // Function to create enemy defeat animation
@@ -14256,24 +14287,48 @@ function handlePlayerDeath() {
 
 // Function to show victory screen
 function showVictoryScreen() {
-    isGameOver = true;
-        
-    // Hide crosshair when showing victory screen
-    hideCrosshair();
-    
-    // Hide HUD elements
-    document.getElementById('hud').style.display = 'none';    
-    // Update statistics on victory screen
-    document.getElementById('damageDealt').textContent = `Damage Dealt: ${gameStats.damageDealt}`;
-    document.getElementById('damageTaken').textContent = `Damage Taken: ${gameStats.damageTaken}`;
-    document.getElementById('normalKills').textContent = `Normal: ${gameStats.kills.normal}`;
-    document.getElementById('tankKills').textContent = `Tank: ${gameStats.kills.tank}`;
-    document.getElementById('rangedKills').textContent = `Sniper: ${gameStats.kills.ranged}`;
-    document.getElementById('bossKills').textContent = `Boss: ${gameStats.kills.boss}`;
-    
     // Show victory screen
     document.getElementById('victoryScreen').style.display = 'flex';
-    document.exitPointerLock();
+    
+    // Update stats display
+    document.getElementById('damageDealt').textContent = `Damage Dealt: ${gameStats.damageDealt}`;
+    document.getElementById('damageTaken').textContent = `Damage Taken: ${gameStats.damageTaken}`;
+    
+    // Clear existing enemy stats first
+    const enemyStatsContainer = document.getElementById('enemiesDefeated');
+    
+    // Keep the container title but remove old stats
+    const containerTitle = enemyStatsContainer.querySelector('div');
+    enemyStatsContainer.innerHTML = '';
+    enemyStatsContainer.appendChild(containerTitle);
+    
+    // Add all standard enemy types
+    addEnemyStat(enemyStatsContainer, 'Normal', gameStats.kills.normal);
+    addEnemyStat(enemyStatsContainer, 'Tank', gameStats.kills.tank);
+    addEnemyStat(enemyStatsContainer, 'Ranged', gameStats.kills.ranged);
+    addEnemyStat(enemyStatsContainer, 'Speeder', gameStats.kills.speeder);
+    addEnemyStat(enemyStatsContainer, 'Exploder', gameStats.kills.exploder);
+    addEnemyStat(enemyStatsContainer, 'Shielder', gameStats.kills.shielder);
+    addEnemyStat(enemyStatsContainer, 'Teleporter', gameStats.kills.teleporter);
+    addEnemyStat(enemyStatsContainer, 'Healer', gameStats.kills.healer);
+    addEnemyStat(enemyStatsContainer, 'Elite', gameStats.kills.elite);
+    addEnemyStat(enemyStatsContainer, 'Bosses', gameStats.kills.boss);
+    
+    // Disable pointer lock if active
+    if (document.pointerLockElement) {
+        document.exitPointerLock();
+    }
+    
+    // Play victory sound or animation if implemented
+    playVictorySound();
+}
+
+// Helper function to add enemy stat to container
+function addEnemyStat(container, label, count) {
+    const statDiv = document.createElement('div');
+    statDiv.className = 'enemy-stat';
+    statDiv.textContent = `${label}: ${count}`;
+    container.appendChild(statDiv);
 }
 
 // Improve the cleanupGameUI function to handle all menus
@@ -14303,6 +14358,12 @@ function cleanupGameUI() {
     // Make sure inventory is closed and hidden
     isInventoryOpen = false;
     document.getElementById('inventory').style.display = 'none';
+    
+    // IMPORTANT FIX: Hide the main HUD container
+    const hud = document.getElementById('hud');
+    if (hud) {
+        hud.style.display = 'none';
+    }
 }
 
 // Function to reset game state
@@ -15102,7 +15163,7 @@ function createMeteorWarning(position) {
 function createMeteorImpact(position, damage) {
     // Create meteor object
     const meteorGeometry = new THREE.SphereGeometry(1, 16, 16);
-    const meteorMaterial = new THREE.MeshBasicMaterial({
+    const meteorMaterial = new THREE.MeshStandardMaterial({
         color: 0xff3300,
         emissive: 0xff0000,
         emissiveIntensity: 1
@@ -15388,12 +15449,14 @@ function createRealityWarpEffect() {
 function applyRealityWarpEffects() {
     // Store original movement settings
     window.originalMovementSettings = {
-        gravity: 0.008, // Assuming this is the normal gravity
+        gravity: GRAVITY, // Assuming this is the normal gravity
         moveSpeedMultiplier: 1.0
     };
     
     // Make gravity inconsistent
-    GRAVITY = 0.004; // Half gravity during warp
+    window.temporaryGravity = GRAVITY / 2;
+
+    window.useTemporaryGravity = true; 
     
     // Apply screen distortion via CSS filter
     document.getElementById('gameScene').style.filter = "hue-rotate(0deg)";
@@ -15481,10 +15544,8 @@ function resetRealityWarpEffects() {
         window.realityWarpInterval = null;
     }
     
-    // Restore original movement settings
-    if (window.originalMovementSettings) {
-        GRAVITY = window.originalMovementSettings.gravity;
-    }
+    // Disable temporary gravity instead of modifying GRAVITY constant
+    window.useTemporaryGravity = false;
     
     // Reset controls
     resetControls();
@@ -15951,28 +16012,10 @@ function showHitMarker() {
     }, 100);
 }
 
-// Replace the existing return button event listener for the victory screen
+// Update the returnToMenuButton event listener
 document.getElementById('returnToMenuButton').addEventListener('click', () => {
-    // Hide victory screen
-    document.getElementById('victoryScreen').style.display = 'none';
-    
-    // Reset game state
-    resetGame();
-    document.getElementById('roundInfo').style.display = 'none';
-    
-    // Clean up UI elements
-    cleanupGameUI();
-    
-    // Show main menu and hide game scene
-    document.getElementById('menu').style.display = 'block';
-    document.getElementById('backgroundScene').style.display = 'block';
-    document.getElementById('gameScene').style.display = 'none';
-    
-    // Reset game started state
-    gameStarted = false;
-    
-    // Make sure cursor is visible
-    document.body.style.cursor = 'auto';
+    // Simply reload the entire page instead of trying to clean up resources
+    window.location.reload();
 });
 
 // Add an event listener for the return to menu button
@@ -16305,3 +16348,322 @@ window.jumpToRound = jumpToRound;
 // Add a hint in the console when the game starts
 console.log("%c🎮 CHEAT CODE AVAILABLE: Type jumpToRound(number) to skip to a specific round", 
            "background: #222; color: #ffcc00; font-size: 14px; padding: 5px; border-radius: 5px;");
+
+// Add a function to disable debug mode
+function disableDebugMode() {
+    if (!window.inDebugMode) {
+        console.log("Debug mode is not active");
+        return;
+    }
+    
+    // Restore original startNextRound function
+    if (window.originalStartNextRound) {
+        startNextRound = window.originalStartNextRound;
+        window.originalStartNextRound = null;
+    }
+    
+    // Reset round display
+    currentRound = 0;
+    document.getElementById('roundDisplay').textContent = `Round ${currentRound}/${totalRounds}`;
+    
+    // Show notification
+    showNotification("Debug mode disabled", 3000);
+    
+    console.log("%c🛠️ DEBUG MODE DISABLED", 
+                "background: #222; color: #00ffcc; font-size: 18px; padding: 10px; border-radius: 5px;");
+    
+    // Clear debug mode flag
+    window.inDebugMode = false;
+    
+    // Start normal round progression
+    startRounds();
+}
+
+// Make disableDebugMode available globally
+window.disableDebugMode = disableDebugMode;
+
+
+function spawnDebugEnemy(type = 'normal', count = 1, formation = 'circle') {
+    if (!window.inDebugMode) {
+        console.log("Not in debug mode. Use enableDebugMode() first.");
+        return;
+    }
+    
+    let enemyType;
+    
+    // Map string type to ENEMY_TYPES constant
+    switch (type.toLowerCase()) {
+        case 'normal':
+            enemyType = ENEMY_TYPES.NORMAL;
+            break;
+        case 'tank':
+            enemyType = ENEMY_TYPES.TANK;
+            break;
+        case 'ranged':
+            enemyType = ENEMY_TYPES.RANGED;
+            break;
+        case 'speeder':
+            enemyType = ENEMY_TYPES.SPEEDER;
+            break;
+        case 'exploder':
+            enemyType = ENEMY_TYPES.EXPLODER;
+            break;
+        case 'shielder':
+            enemyType = ENEMY_TYPES.SHIELDER;
+            break;
+        case 'teleporter':
+            enemyType = ENEMY_TYPES.TELEPORTER;
+            break;
+        case 'healer':
+            enemyType = ENEMY_TYPES.HEALER;
+            break;
+        case 'elite':
+            enemyType = ENEMY_TYPES.ELITE;
+            break;
+        case 'boss':
+            enemyType = ENEMY_TYPES.BOSS;
+            break;
+        case 'warden':
+            enemyType = ENEMY_TYPES.WARDEN_BOSS;
+            break;
+        case 'phantom':
+            enemyType = ENEMY_TYPES.PHANTOM_BOSS;
+            break;
+        case 'mega':
+            enemyType = ENEMY_TYPES.MEGA_BOSS;
+            break;
+        default:
+            console.log("Unknown enemy type. Using normal enemy.");
+            enemyType = ENEMY_TYPES.NORMAL;
+    }
+    
+    // Check if this is a boss type enemy
+    const isBoss = (
+        enemyType === ENEMY_TYPES.BOSS ||
+        enemyType === ENEMY_TYPES.WARDEN_BOSS ||
+        enemyType === ENEMY_TYPES.PHANTOM_BOSS ||
+        enemyType === ENEMY_TYPES.MEGA_BOSS
+    );
+    
+    // Spawn the requested enemies
+    const radius = 20; // Spawn radius from player
+    
+    for (let i = 0; i < count; i++) {
+        let spawnPos;
+        
+        // If it's a boss, always spawn at 0,0,0
+        if (isBoss) {
+            spawnPos = new THREE.Vector3(0, 0, 0);
+            console.log("Boss type detected - forcing spawn at center position (0,0,0)");
+        } else {
+            // Different formation types for non-boss enemies
+            switch (formation.toLowerCase()) {
+                case 'circle':
+                    // Evenly distribute around the player in a circle
+                    const angle = (i / count) * Math.PI * 2;
+                    spawnPos = new THREE.Vector3(
+                        player.position.x + Math.cos(angle) * radius,
+                        0,
+                        player.position.z + Math.sin(angle) * radius
+                    );
+                    break;
+                    
+                case 'line':
+                    // Line formation from left to right
+                    spawnPos = new THREE.Vector3(
+                        player.position.x - radius/2 + i * (radius/count),
+                        0,
+                        player.position.z + radius
+                    );
+                    break;
+                    
+                case 'random':
+                default:
+                    // Random positions around the player
+                    const randomAngle = Math.random() * Math.PI * 2;
+                    const randomRadius = radius * (0.8 + Math.random() * 0.4);
+                    spawnPos = new THREE.Vector3(
+                        player.position.x + Math.cos(randomAngle) * randomRadius,
+                        0,
+                        player.position.z + Math.sin(randomAngle) * randomRadius
+                    );
+            }
+        }
+        
+        // THIS WAS MISSING: Actually create the enemy
+        const enemy = spawnEnemy(enemyType);
+        
+        // Override position (ensures it won't spawn in obstacles)
+        if (enemy) {
+            enemy.position.copy(spawnPos);
+            enemy.position.y = enemy.geometry.parameters.height / 2;
+
+            // IMPORTANT: Initialize any missing AI properties for debug mode
+            if (enemy.userData) {
+                // Force initialize lastAttackTime to enable attacks
+                enemy.userData.lastAttackTime = 0;
+                
+                // Add these critical properties that might be missing
+                if (!enemy.userData.speed) {
+                    enemy.userData.speed = 0.1; // Default speed if missing
+                }
+                
+                if (enemyType === ENEMY_TYPES.SPEEDER && !enemy.userData.strafeDirection) {
+                    enemy.userData.strafeDirection = 1; // For speeder enemies
+                }
+                
+                if (enemyType === ENEMY_TYPES.TELEPORTER && !enemy.userData.teleportDistance) {
+                    enemy.userData.teleportDistance = 15;
+                    enemy.userData.teleportCooldown = 5000;
+                    enemy.userData.lastTeleportTime = 0;
+                }
+                
+                if (enemyType === ENEMY_TYPES.HEALER) {
+                    if (!enemy.userData.healRange) enemy.userData.healRange = 10;
+                    if (!enemy.userData.healCooldown) enemy.userData.healCooldown = 3000;
+                    if (!enemy.userData.lastHealTime) enemy.userData.lastHealTime = 0;
+                    if (!enemy.userData.healAmount) enemy.userData.healAmount = 20;
+                }
+                
+                if (enemyType === ENEMY_TYPES.ELITE && !enemy.userData.eliteType) {
+                    // Assign random elite type if missing
+                    const eliteTypes = ['speed', 'damage', 'health', 'range'];
+                    enemy.userData.eliteType = eliteTypes[Math.floor(Math.random() * eliteTypes.length)];
+                    enemy.userData.specialAttackCooldown = 8000;
+                    enemy.userData.lastSpecialAttackTime = 0;
+                }
+                
+                // Initialize boss-specific properties if not already set
+                if (isBoss) {
+                    // Make sure phase is set for mega boss
+                    if (enemyType === ENEMY_TYPES.MEGA_BOSS && !enemy.userData.currentPhase) {
+                        enemy.userData.currentPhase = 1;
+                    }
+                    
+                    // Initialize all timing properties for bosses
+                    const now = performance.now();
+                    if (enemy.userData.lastFireRingTime === undefined) enemy.userData.lastFireRingTime = now;
+                    if (enemy.userData.lastChargeTime === undefined) enemy.userData.lastChargeTime = now;
+                    if (enemy.userData.lastShieldWallTime === undefined) enemy.userData.lastShieldWallTime = now;
+                    if (enemy.userData.lastGroundSlamTime === undefined) enemy.userData.lastGroundSlamTime = now;
+                    if (enemy.userData.lastSummonTime === undefined) enemy.userData.lastSummonTime = now;
+                    if (enemy.userData.lastTeleportTime === undefined) enemy.userData.lastTeleportTime = now;
+                    if (enemy.userData.lastCloneTime === undefined) enemy.userData.lastCloneTime = now;
+                    if (enemy.userData.lastVoidZoneTime === undefined) enemy.userData.lastVoidZoneTime = now;
+                    if (enemy.userData.lastPhaseShiftTime === undefined) enemy.userData.lastPhaseShiftTime = now;
+                    if (enemy.userData.lastDeathRayTime === undefined) enemy.userData.lastDeathRayTime = now;
+                    if (enemy.userData.lastMeteorTime === undefined) enemy.userData.lastMeteorTime = now;
+                    if (enemy.userData.lastRealityWarpTime === undefined) enemy.userData.lastRealityWarpTime = now;
+                    
+                    // Initialize arrays if needed
+                    if (enemyType === ENEMY_TYPES.PHANTOM_BOSS) {
+                        if (!enemy.userData.activeClones) enemy.userData.activeClones = [];
+                    }
+                    
+                    // Additional properties that might be missing
+                    if (enemyType === ENEMY_TYPES.MEGA_BOSS) {
+                        if (!enemy.userData.phaseThresholds) {
+                            enemy.userData.phaseThresholds = [0.66, 0.33]; // Phase transition thresholds
+                        }
+                        if (!enemy.userData.phaseColors) {
+                            enemy.userData.phaseColors = [0x880000, 0x8800cc, 0xcc0088];
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    // Update enemy count display
+    document.getElementById('enemiesRemaining').textContent = `Enemies: ${activeEnemies.length}`;
+    
+    console.log(`Spawned ${count} ${type} enemies in ${formation} formation`);
+    return activeEnemies.length;
+}
+
+// Make spawnDebugEnemy available as spawnEnemy in debug mode
+window.spawnEnemy = function(type = 'normal', count = 1, formation = 'circle') {
+    // Call the existing debug spawn function
+    return spawnDebugEnemy(type, count, formation);
+};
+
+// Updated debug mode for presentation purposes
+function enableDebugMode() {
+    // Clear any existing enemies and projectiles
+    for (let i = activeEnemies.length - 1; i >= 0; i--) {
+        scene.remove(activeEnemies[i]);
+    }
+    enemies = [];
+    activeEnemies = [];
+    projectiles.length = 0;
+    bullets.length = 0;
+    
+    // Enable infinite health and money
+    toggleInfiniteHealth();
+    toggleInfiniteMoney();
+    
+    // IMPORTANT FIX: Cancel any existing countdown timers
+    if (countdownInterval) {
+        clearInterval(countdownInterval);
+        countdownInterval = null;
+    }
+    
+    // IMPORTANT FIX: Cancel any other game timers
+    if (stuckDetectionInterval) {
+        clearInterval(stuckDetectionInterval);
+        stuckDetectionInterval = null;
+    }
+    
+    // Hide countdown display
+    const countdownElement = document.getElementById('countdown');
+    if (countdownElement) {
+        countdownElement.style.display = 'none';
+    }
+    
+    // Make sure game is in active state
+    isRoundActive = true;
+    isGameOver = false;
+    spawnQueueActive = false;
+    isPaused = false; // IMPORTANT: Ensure game is not paused for enemies to move
+    
+    // Set current round to "Debug Round"
+    currentRound = 999;
+    document.getElementById('roundDisplay').textContent = "Debug Mode";
+    document.getElementById('enemiesRemaining').textContent = "Enemies: 0";
+    
+    // IMPORTANT FIX: Override startNextRound to do nothing during debug mode
+    const originalStartNextRound = startNextRound;
+    startNextRound = function() {
+        console.log("Attempted to start next round during debug mode - prevented");
+        return;
+    };
+    
+    // IMPORTANT FIX: Store the original function to restore when debug mode is disabled
+    window.originalStartNextRound = originalStartNextRound;
+    
+    // Show notification
+    showNotification("DEBUG MODE ACTIVATED\nUse spawnEnemy() in console", 5000);
+    
+    console.log("%c🛠️ DEBUG MODE ACTIVATED", 
+                "background: #222; color: #00ffcc; font-size: 18px; padding: 10px; border-radius: 5px;");
+    console.log("%c📋 Available commands:", 
+                "color: #00ffcc; font-size: 14px;");
+    console.log("%c• spawnEnemy(type, count, formation) - Spawn enemies", 
+                "color: #fff; font-size: 14px;");
+    console.log("%c• Available types: 'normal', 'tank', 'ranged', 'speeder', 'exploder', 'shielder', 'teleporter', 'healer', 'elite', 'boss', 'warden', 'phantom', 'mega'", 
+                "color: #aaa; font-size: 12px;");
+    console.log("%c• Example: spawnEnemy('boss', 1, 'circle')", 
+                "color: #fff; font-size: 14px;");
+    console.log("%c• Use disableDebugMode() to exit debug mode", 
+                "color: #fff; font-size: 14px;");
+                
+    // Set a flag to indicate we're in debug mode
+    window.inDebugMode = true;
+}
+
+// Make enableDebugMode available globally
+window.enableDebugMode = enableDebugMode;
+
+// Add a hint in the console when the game starts
+console.log("%c🛠️ DEBUG MODE AVAILABLE: Type enableDebugMode() in the console to activate presentation mode", 
+           "background: #222; color: #00ffcc; font-size: 14px; padding: 5px; border-radius: 5px;");
