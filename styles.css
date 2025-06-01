@@ -656,3 +656,37 @@ canvas {
     margin: 15px auto;
     background-color: rgba(255, 255, 255, 0.3);
 }
+
+.shop-item-image {
+        width: 36px;
+        height: 36px;
+        object-fit: contain;
+        display: block;
+        margin: 0 auto;
+    }
+    
+    .shop-item .item-icon {
+        width: 40px;
+        height: 40px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background-color: rgba(0, 0, 0, 0.2);
+        border-radius: 4px;
+        margin-right: 10px;
+    }
+    
+    /* Updated shop item styling for better appearance */
+    .shop-item {
+        display: flex;
+        align-items: center;
+        background-color: rgba(0, 0, 0, 0.3);
+        border-radius: 6px;
+        margin: 8px 0;
+        padding: 10px;
+        transition: background-color 0.2s;
+    }
+    
+    .shop-item:hover {
+        background-color: rgba(0, 0, 0, 0.4);
+    }

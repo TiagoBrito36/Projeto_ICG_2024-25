@@ -1,4 +1,4 @@
-# Apocalypse: Last Stand 
+# Apocalipse: Last Stand 
 
 A first-person combat arena game developed with Three.js for the Introduction to Computer Graphics course (2024-25).
 
@@ -6,7 +6,7 @@ A first-person combat arena game developed with Three.js for the Introduction to
 
 ## Description
 
-Last Stand: Apocalypse is a wave-based first-person shooter where players must survive increasingly difficult rounds of enemies in a post-apocalyptic setting. The game features various enemy types, weapon systems, environmental elements, and a complete progression system with multiple bosses.
+Last Stand: Apocalipse is a wave-based first-person shooter where players must survive increasingly difficult rounds of enemies in a post-apocalyptic setting. The game features various enemy types, weapon systems, environmental elements, and a complete progression system with multiple bosses.
 
 ## Technologies Used
 
@@ -140,7 +140,7 @@ This project was developed for the Introduction to Computer Graphics course at U
 - Camera manipulation
 - Collision detection
 - Animation systems
-- Lighting effects (point lights, ambient lighting, day-night cycle)
+- Lighting effects 
 - Particle systems
 - Materials and textures
 - User interface integration with 3D environments
@@ -153,4 +153,33 @@ Tiago Brito
 
 *This project is for educational purposes only.*
 
+## Patch Notes
 
+### v1.1.0 (June 1, 2025) - Shadow & Immersion Enhancement Update
+- **Shadow System Overhaul**:
+  - Added shadow casting to mountains, creating more realistic terrain
+  - Road blockades now cast and receive shadows
+  - Gas station structures properly cast shadows
+  - Abandoned cars and GLTF models now cast shadows
+  - Improved shadow map resolution for better visual quality
+  
+- **Player Experience Enhancements**:
+  - Fixed camera clipping through player model when looking up
+  - Player model now properly casts shadows
+  - Adjusted camera position to eye level for better immersion
+
+- **Weapon & Item Improvements**:
+  - Updated bandage and rocket launcher appearance 
+  - Enhanced item icons for better visibility in inventory
+
+- **Audio Enhancements**:
+  - Added weapon sound design for more impact
+  - Added unique audio cues for item usage
+  - Adden sound effects to the menus
+
+- **Gameplay Tweaks**:
+  - Using consumable items now properly applies movement speed reduction
+  - Improved collision detection with environmental objects
+
+### v1.0.0 (May 27, 2025) - Initial Release
+- First public release of Apocalipse: Last Stand

@@ -271,6 +271,9 @@ let minigunSpinningSound = null;
 let minigunSpinTimeout = null;
 let minigunFireInterval = null;
 let minigunHeatLevel = 0; // For overheating mechanic
+let minigunFireSound = null;
+let minigunSpinupSound = null;
+let minigunSpindownSound = null;
 let rocketLauncherModel = null;
 let rocketLauncherAmmo = 1;
 let rocketLauncherMaxAmmo = 1;
@@ -725,14 +728,30 @@ function loadAbandonedCarModel(x = 20, z = 4, rotationY = Math.PI, targetScene =
             car.userData = {
                 collisionWidth: 4,  // Width for collision detection
                 collisionDepth: 8,  // Length for collision detection
-                collisionRadius: 4  // Simple radius for simpler calculations
+                collisionRadius: 4, // Simple radius for simpler calculations
+                isCar: true         // Flag to identify car objects
             };
 
-            // Add shadow casting to all meshes in the model
+            // Add shadow casting to all meshes in the model with more explicit options
             car.traverse(function(node) {
                 if (node.isMesh) {
+                    // Enable shadows with explicit properties
                     node.castShadow = true;
                     node.receiveShadow = true;
+                    
+                    // Improve material shadow handling if needed
+                    if (node.material) {
+                        // Ensure materials are properly set up for shadows
+                        if (Array.isArray(node.material)) {
+                            // Handle multi-material objects
+                            node.material.forEach(mat => {
+                                mat.needsUpdate = true;
+                            });
+                        } else {
+                            // Single material
+                            node.material.needsUpdate = true;
+                        }
+                    }
                 }
             });
             
@@ -742,6 +761,12 @@ function loadAbandonedCarModel(x = 20, z = 4, rotationY = Math.PI, targetScene =
             // Add to tracking array only if it's the game scene
             if (targetScene === scene) {
                 abandonedCars.push(car);
+                console.log("Car added with shadows enabled at position:", x, z);
+            }
+            
+            // Force a shadow update after adding to scene
+            if (renderer.shadowMap.enabled) {
+                renderer.shadowMap.needsUpdate = true;
             }
         },
         function(xhr) {
@@ -878,7 +903,7 @@ function createRocketLauncherModel() {
     // Create main tube
     const tubeGeometry = new THREE.CylinderGeometry(0.1, 0.1, 0.8, 16);
     const tubeMaterial = new THREE.MeshStandardMaterial({
-        color: 0x444444,
+        color: 0x4b5320,
         roughness: 0.4,
         metalness: 0.7
     });
@@ -891,7 +916,7 @@ function createRocketLauncherModel() {
     // Create wider tube opening (front)
     const muzzleGeometry = new THREE.CylinderGeometry(0.12, 0.12, 0.05, 16);
     const muzzleMaterial = new THREE.MeshStandardMaterial({
-        color: 0x333333,
+        color: 0x3d5229,
         roughness: 0.5,
         metalness: 0.8
     });
@@ -905,7 +930,7 @@ function createRocketLauncherModel() {
     // Create back of tube
     const backGeometry = new THREE.CylinderGeometry(0.11, 0.11, 0.05, 16);
     const backMaterial = new THREE.MeshStandardMaterial({
-        color: 0x333333,
+        color: 0x3d5229,
         roughness: 0.5,
         metalness: 0.8
     });
@@ -919,7 +944,7 @@ function createRocketLauncherModel() {
     // Create handle/grip
     const handleGeometry = new THREE.BoxGeometry(0.1, 0.25, 0.08);
     const handleMaterial = new THREE.MeshStandardMaterial({
-        color: 0x222222,
+        color: 0x374a24,
         roughness: 0.7,
         metalness: 0.3
     });
@@ -947,7 +972,7 @@ function createRocketLauncherModel() {
     // Create sights on top
     const sightGeometry = new THREE.BoxGeometry(0.3, 0.08, 0.04);
     const sightMaterial = new THREE.MeshStandardMaterial({
-        color: 0x222222,
+        color: 0x4b5320,
         roughness: 0.6,
         metalness: 0.5
     });
@@ -960,7 +985,7 @@ function createRocketLauncherModel() {
     // Add a support under the tube
     const supportGeometry = new THREE.BoxGeometry(0.4, 0.08, 0.05);
     const supportMaterial = new THREE.MeshStandardMaterial({
-        color: 0x333333,
+        color: 0x5a6b34,
         roughness: 0.6,
         metalness: 0.5
     });
@@ -1015,6 +1040,9 @@ function fireRocketLauncher() {
         animateRocketLauncherReload();
         return;
     }
+
+    // Play rocket launcher firing sound
+    soundManager.play('rocket_launcher_fire', 0.7);
     
     // Decrement ammo
     rocketLauncherAmmo--;
@@ -1241,6 +1269,9 @@ function createRocketExplosion(position, radius, damage) {
     
     // Check for entities in blast radius
     checkBlastDamage(position, radius, damage);
+
+    // Play explosion sound
+    soundManager.play('rocket_explosion', 1.0);
     
     // Animate explosion
     const duration = 1000; // 1 second
@@ -1405,6 +1436,9 @@ function animateRocketLauncherReload() {
     rocketLauncherReloading = true;
     rocketLauncherAnimationInProgress = true;
     showNotification("Reloading rocket launcher...", 3000);
+
+    // Play rocket launcher reload sound
+    soundManager.play('rocket_launcher_reload', 0.8);
     
     // Animation constants
     const totalDuration = 3000; // 3 seconds reload time
@@ -1614,6 +1648,9 @@ function fireCrossbow() {
         animateCrossbowReload();
         return;
     }
+
+    // Play crossbow firing sound
+    soundManager.play('crossbow_fire', 0.7);
     
     // Decrement ammo
     crossbowAmmo--;
@@ -1788,6 +1825,9 @@ function animateCrossbowReload() {
     crossbowReloading = true;
     crossbowAnimationInProgress = true;
     showNotification("Reloading crossbow...", 1800);
+
+    // Play crossbow reload sound
+    soundManager.play('crossbow_reload', 0.8);
     
     // Animation constants
     const totalDuration = 1800; // 1.8 seconds reload time
@@ -2050,10 +2090,32 @@ function startMinigunSpin() {
         minigunFireInterval = null;
     }
     
+    // Stop any existing sounds
+    if (minigunFireSound) {
+        minigunFireSound.pause();
+        minigunFireSound = null;
+    }
+    
+    if (minigunSpindownSound) {
+        minigunSpindownSound.pause();
+        minigunSpindownSound = null;
+    }
+    
+    // Play spin-up sound
+    minigunSpinupSound = soundManager.sounds['minigun_spinup'].cloneNode();
+    minigunSpinupSound.volume = 0.7;
+    minigunSpinupSound.play().catch(e => console.log("Sound play prevented:", e));
+    
     // Schedule firing to start after full spin-up
     setTimeout(() => {
         // Only start firing if still spinning AND mouse still down
         if (minigunSpinning && mouseIsDown) {
+            // Start the firing loop sound once fully spun up
+            minigunFireSound = soundManager.sounds['minigun_fire'].cloneNode();
+            minigunFireSound.volume = 0.6;
+            minigunFireSound.loop = true;
+            minigunFireSound.play().catch(e => console.log("Sound play prevented:", e));
+            
             minigunFireInterval = setInterval(() => {
                 // Check if we're still allowed to fire
                 if (mouseIsDown && minigunSpinning && !minigunReloading) {
@@ -2062,6 +2124,12 @@ function startMinigunSpin() {
                     // If conditions no longer met, clear the interval
                     clearInterval(minigunFireInterval);
                     minigunFireInterval = null;
+                    
+                    // Stop the firing sound
+                    if (minigunFireSound) {
+                        minigunFireSound.pause();
+                        minigunFireSound = null;
+                    }
                 }
             }, 70);
         }
@@ -2075,11 +2143,27 @@ function stopMinigunSpin() {
         minigunFireInterval = null;
     }
     
+    // Stop the firing sound immediately
+    if (minigunFireSound) {
+        minigunFireSound.pause();
+        minigunFireSound = null;
+    }
+    
+    if (minigunSpinupSound) {
+        minigunSpinupSound.pause();
+        minigunSpinupSound = null;
+    }
+    
     // Clear any existing spin down timeout
     if (minigunSpinTimeout) {
         clearTimeout(minigunSpinTimeout);
         minigunSpinTimeout = null;
     }
+    
+    // Play spin down sound
+    minigunSpindownSound = soundManager.sounds['minigun_spindown'].cloneNode();
+    minigunSpindownSound.volume = 0.7;
+    minigunSpindownSound.play().catch(e => console.log("Sound play prevented:", e));
     
     // Set a timeout to actually stop spinning after 1 second
     minigunSpinTimeout = setTimeout(() => {
@@ -2367,6 +2451,9 @@ function fireSniperRifle() {
         animateSniperRifleReload();
         return;
     }
+
+    // Play sniper rifle firing sound
+    soundManager.play('sniper_rifle_fire', 0.8);
     
     // Decrement ammo
     sniperRifleAmmo--;
@@ -2537,6 +2624,9 @@ function animateSniperRifleReload() {
     sniperRifleReloading = true;
     sniperRifleAnimationInProgress = true;
     showNotification("Reloading sniper rifle...", 2500);
+
+    // Play sniper rifle reload sound
+    soundManager.play('sniper_rifle_reload', 0.8);
     
     // Exit scope view if reloading while scoped
     if (isScoped) {
@@ -2842,6 +2932,9 @@ function fireAssaultRifle() {
         animateAssaultRifleReload();
         return;
     }
+
+    // Play assault rifle firing sound
+    soundManager.play('assault_rifle_fire', 0.6);
     
     // Decrement ammo
     assaultRifleAmmo--;
@@ -2975,6 +3068,9 @@ function animateAssaultRifleReload() {
     assaultRifleReloading = true;
     assaultRifleAnimationInProgress = true;
     showNotification("Reloading assault rifle...", 2000);
+
+    // Play assault rifle reload sound
+    soundManager.play('assault_rifle_reload', 0.8);
     
     // Animation constants
     const totalDuration = 2000; // 2 second reload time
@@ -3099,8 +3195,11 @@ function updateInventoryDisplay() {
         const slot = slots[index];
         
         if (item !== null) {
-            // Set icon for non-empty slots
-            slot.textContent = getItemSymbol(item);
+            // Get item symbol (HTML or emoji)
+            const symbol = getItemSymbol(item);
+            
+            // Use innerHTML instead of textContent
+            slot.innerHTML = symbol;
             slot.classList.remove('empty');
             
             // If item is an object with count, add stack count
@@ -3112,7 +3211,7 @@ function updateInventoryDisplay() {
             }
         } else {
             // Clear empty slots
-            slot.textContent = '';
+            slot.innerHTML = '';
             slot.classList.add('empty');
         }
     });
@@ -3120,25 +3219,168 @@ function updateInventoryDisplay() {
 
 // Update the getItemSymbol function to use the correct pistol emoji
 function getItemSymbol(item) {
-    // If item is an object with type property
+    // Handle stackable items (items with count)
     const itemType = typeof item === 'object' && item !== null ? item.type : item;
     
-    switch(itemType) {
-        case WEAPON_TYPES.KNIFE: return '🔪'; 
-        case WEAPON_TYPES.PISTOL: return '🔫';
-        case WEAPON_TYPES.SHOTGUN: return '🔫'; // Updated to match shop icon
-        case WEAPON_TYPES.ASSAULT_RIFLE: return '🔫'; // Updated to match shop icon
-        case WEAPON_TYPES.SNIPER_RIFLE: return '🔫'; // Updated to match shop icon
-        case WEAPON_TYPES.CROSSBOW: return '🏹';
-        case WEAPON_TYPES.MINIGUN: return '🔫'; // Added missing icon
-        case WEAPON_TYPES.ROCKET_LAUNCHER: return '🚀'; // Added missing icon
-        case ITEM_TYPES.BANDAGE: return '🩹';
-        case ITEM_TYPES.MEDKIT: return '🧰';
-        case ITEM_TYPES.MINI_SHIELD: return '🛡️';
-        case ITEM_TYPES.BIG_SHIELD: return '🔷';
-        default: return '?';
+    // For custom image icons, return HTML string instead of DOM element
+    if (itemType === WEAPON_TYPES.KNIFE) {
+        return `<img src="assets/icons/weapons/knife.png" class="item-icon" style="width:30px;height:30px;display:block;margin:0 auto;position:relative;top:25%;transform:translateY(-50%);">`;
     }
-}  
+
+    if (itemType === WEAPON_TYPES.PISTOL) {
+        return `<img src="assets/icons/weapons/pistol.png" class="item-icon" style="width:30px;height:30px;display:block;margin:0 auto;position:relative;top:25%;left:5%;transform:translateY(-50%);">`;
+    }
+    
+    if (itemType === WEAPON_TYPES.ASSAULT_RIFLE) {
+        return `<img src="assets/icons/weapons/assault-rifle.png" class="item-icon" style="width:30px;height:30px;display:block;margin:0 auto;position:relative;top:25%;left:0%;transform:translateY(-50%);">`;
+    }
+
+    if (itemType === WEAPON_TYPES.SHOTGUN) {
+        return `<img src="assets/icons/weapons/shotgun.png" class="item-icon" style="width:30px;height:30px;display:block;margin:0 auto;position:relative;top:25%;left:0%;transform:translateY(-50%);">`;
+    }
+
+    if (itemType === WEAPON_TYPES.SNIPER_RIFLE) {
+        return `<img src="assets/icons/weapons/sniper-rifle.png" class="item-icon" style="width:30px;height:30px;display:block;margin:0 auto;position:relative;top:25%;left:0%;transform:translateY(-50%);">`;
+    }
+
+    if (itemType === WEAPON_TYPES.CROSSBOW) {
+        return `<img src="assets/icons/weapons/crossbow.png" class="item-icon" style="width:30px;height:30px;display:block;margin:0 auto;position:relative;top:25%;left:0%;transform:translateY(-50%);">`;
+    }
+
+    if (itemType === WEAPON_TYPES.MINIGUN) {
+        return `<img src="assets/icons/weapons/minigun.png" class="item-icon" style="width:30px;height:30px;display:block;margin:0 auto;position:relative;top:25%;left:0%;transform:translateY(-50%);">`;   
+    }
+
+    if (itemType === WEAPON_TYPES.ROCKET_LAUNCHER) {
+        return `<img src="assets/icons/weapons/rocket-launcher.png" class="item-icon" style="width:30px;height:30px;display:block;margin:0 auto;position:relative;top:25%;left:0%;transform:translateY(-50%);">`;
+    }
+
+    if (itemType === ITEM_TYPES.BANDAGE) {
+        return `<img src="assets/icons/items/bandage.png" class="item-icon" style="width:30px;height:30px;display:block;margin:0 auto;position:relative;top:25%;left:0%;transform:translateY(-50%);">`;
+    }
+
+    if (itemType === ITEM_TYPES.MEDKIT) {
+        return `<img src="assets/icons/items/medkit.png" class="item-icon" style="width:30px;height:30px;display:block;margin:0 auto;position:relative;top:25%;left:0%;transform:translateY(-50%);">`;
+    }
+
+    if (itemType === ITEM_TYPES.MINI_SHIELD) {
+        return `<img src="assets/icons/items/mini-shield.png" class="item-icon" style="width:30px;height:30px;display:block;margin:0 auto;position:relative;top:25%;left:0%;transform:translateY(-50%);">`;
+    }
+
+    if (itemType === ITEM_TYPES.BIG_SHIELD) {
+        return `<img src="assets/icons/items/big-shield.png" class="item-icon" style="width:30px;height:30px;display:block;margin:0 auto;position:relative;top:25%;left:0%;transform:translateY(-50%);">`;
+    }
+
+    else{
+        return '❓';
+    }
+
+}
+
+// Basic sound system
+const soundManager = {
+    sounds: {},
+    enabled: true,
+    
+    // Initialize with essential sounds
+    init: function() {
+        // Knife sounds
+        this.loadSound('knife_swing', 'assets/sounds/weapons/knife-firing.mp3');
+        this.loadSound('knife_select', 'assets/sounds/weapons/knife-reload.wav');
+        
+        // Pistol sounds
+        this.loadSound('pistol_fire', 'assets/sounds/weapons/pistol-firing.wav');
+        this.loadSound('pistol_reload', 'assets/sounds/weapons/pistol-reload.mp3');
+        this.loadSound('pistol_select', 'assets/sounds/weapons/pistol-reload.mp3');
+    
+        // Shotgun sounds
+        this.loadSound('shotgun_fire', 'assets/sounds/weapons/shotgun-firing.wav');
+        this.loadSound('shotgun_reload', 'assets/sounds/weapons/shotgun-reload.wav');
+        this.loadSound('shotgun_select', 'assets/sounds/weapons/shotgun-reload.wav');
+    
+        // Assault rifle sounds
+        this.loadSound('assault_rifle_fire', 'assets/sounds/weapons/assault_rifle-firing.wav');
+        this.loadSound('assault_rifle_reload', 'assets/sounds/weapons/assault_rifle-reload.wav');
+        this.loadSound('assault_rifle_select', 'assets/sounds/weapons/assault_rifle-reload.wav');
+    
+        // Crossbow sounds
+        this.loadSound('crossbow_fire', 'assets/sounds/weapons/crossbow-firing.wav');
+        this.loadSound('crossbow_reload', 'assets/sounds/weapons/crossbow-reload.wav');
+        this.loadSound('crossbow_select', 'assets/sounds/weapons/crossbow-reload.wav');
+
+        // Rocket launcher sounds
+        this.loadSound('rocket_launcher_fire', 'assets/sounds/weapons/rocket_launcher-firing.wav');
+        this.loadSound('rocket_launcher_reload', 'assets/sounds/weapons/rocket_launcher-reload.wav');
+        this.loadSound('rocket_launcher_select', 'assets/sounds/weapons/rocket_launcher-reload.wav');
+        this.loadSound('rocket_explosion', 'assets/sounds/weapons/rocket_launcher-explosion.wav');
+
+        // Minigun sounds
+        this.loadSound('minigun_select', 'assets/sounds/weapons/minigun_select.mp3');
+        this.loadSound('minigun_spinup', 'assets/sounds/weapons/minigun-startfiring.mp3');
+        this.loadSound('minigun_fire', 'assets/sounds/weapons/minigun-firingloop.mp3');
+        this.loadSound('minigun_spindown', 'assets/sounds/weapons/minigun-stopfiring.mp3');
+        this.loadSound('minigun_overheat', 'assets/sounds/weapons/minigun_reload.mp3');
+
+        // Sniper rifle sounds
+        this.loadSound('sniper_rifle_fire', 'assets/sounds/weapons/sniper-firing.wav');
+        this.loadSound('sniper_rifle_reload', 'assets/sounds/weapons/sniper-reload.wav');
+        this.loadSound('sniper_rifle_select', 'assets/sounds/weapons/sniper-reload.wav');
+
+        // PLayer sounds
+        this.loadSound('player_hurt', 'assets/sounds/player/player-hurt.wav');
+        this.loadSound('player_shield_hit', 'assets/sounds/player/player-hurt.wav'); 
+
+        // Consumable sounds
+        this.loadSound('bandage_use', 'assets/sounds/player/player-healing_bandages.wav');
+        this.loadSound('medkit_use', 'assets/sounds/player/player-healing_medkit.mp3');
+        this.loadSound('mini_shield_use', 'assets/sounds/player/player-healing_minis.flac');
+        this.loadSound('big_shield_use', 'assets/sounds/player/player-healing_big.wav');
+
+        // Enemy sounds 
+        this.loadSound('enemy_death', 'assets/sounds/enemies/death.wav');
+        this.loadSound('boss_death', 'assets/sounds/enemies/death.wav');
+        this.loadSound('enemy_hit', 'assets/sounds/enemies/hit.wav');
+        this.loadSound('boss_incoming', 'assets/sounds/enemies/boss.wav');    
+        
+        // UI sounds
+        this.loadSound('button_click', 'assets/sounds/ui/button.wav');
+    },
+    
+    // Load a sound
+    loadSound: function(name, url) {
+        this.sounds[name] = new Audio(url);
+    },
+    
+    // Play a sound with optional volume
+    play: function(name, volume = 1.0) {
+        if (!this.enabled || !this.sounds[name]) return;
+        
+        const sound = this.sounds[name].cloneNode();
+        sound.volume = volume;
+        sound.play().catch(e => console.log("Sound play prevented:", e));
+    }
+};
+
+function addButtonSounds() {
+    // Get all buttons in the document
+    const buttons = document.querySelectorAll('button');
+    
+    // Add click sound to each button
+    buttons.forEach(button => {
+        button.addEventListener('click', () => {
+            // Play the same button click sound for all buttons
+            soundManager.play('button_click', 0.5);
+        });
+    });
+    
+    // Add sound for color selection buttons (they might not be captured by the button selector)
+    const colorButtons = document.querySelectorAll('.color-btn');
+    colorButtons.forEach(button => {
+        button.addEventListener('click', () => {
+            soundManager.play('button_click', 0.5);
+        });
+    });
+}
 
 // Function to select an inventory slot
 function selectInventorySlot(slotIndex) {
@@ -3365,8 +3607,11 @@ function updateItemBar() {
     inventory.forEach((item, index) => {
         const content = slots[index].querySelector('.item-content');
         if (item !== null) {
-            // Show item icon
-            content.textContent = getItemSymbol(item);
+            // Get item symbol (could be HTML string or emoji)
+            const symbol = getItemSymbol(item);
+            
+            // Set inner HTML instead of textContent to support both HTML and emoji
+            content.innerHTML = symbol;
             
             // If item is an object with count, add stack count
             if (typeof item === 'object' && item.count > 1) {
@@ -3377,7 +3622,7 @@ function updateItemBar() {
             }
         } else {
             // Clear empty slots
-            content.textContent = '';
+            content.innerHTML = '';
         }
     });
 }
@@ -3389,6 +3634,25 @@ function selectSlot(slot) {
         updateItemBar();
         updateWeaponVisibility();
         updateAmmoDisplay(); // Make sure to update ammo display when changing weapons
+
+        // Play knife selection sound if switching to knife
+        if (inventory[selectedSlot] === WEAPON_TYPES.KNIFE) {
+            soundManager.play('knife_select', 0.6);
+        } else if (inventory[selectedSlot] === WEAPON_TYPES.PISTOL) {
+            soundManager.play('pistol_select', 0.6);
+        } else if (inventory[selectedSlot] === WEAPON_TYPES.SHOTGUN) {
+            soundManager.play('shotgun_select', 0.6);
+        } else if (inventory[selectedSlot] === WEAPON_TYPES.ASSAULT_RIFLE) {
+            soundManager.play('assault_rifle_select', 0.6);
+        } else if (inventory[selectedSlot] === WEAPON_TYPES.CROSSBOW) {
+            soundManager.play('crossbow_select', 0.6);
+        } else if (inventory[selectedSlot] === WEAPON_TYPES.ROCKET_LAUNCHER) {
+            soundManager.play('rocket_launcher_select', 0.6);
+        } else if (inventory[selectedSlot] === WEAPON_TYPES.MINIGUN) {
+            soundManager.play('minigun_select', 0.6);
+        } else if (inventory[selectedSlot] === WEAPON_TYPES.SNIPER_RIFLE) {
+            soundManager.play('sniper_rifle_select', 0.6);
+        }
     }
 }
 
@@ -3748,6 +4012,20 @@ function startItemUse(itemType) {
     usingItem = true;
     currentItemInUse = itemType;
     itemUseStartTime = performance.now();
+
+    if (itemType === ITEM_TYPES.BANDAGE) {
+        soundManager.play('bandage_use', 0.7);
+    }
+    else if (itemType === ITEM_TYPES.MEDKIT) {
+        soundManager.play('medkit_use', 0.7);
+    }
+    else if (itemType === ITEM_TYPES.MINI_SHIELD) {
+        soundManager.play('mini_shield_use', 0.7);
+    }
+    else if (itemType === ITEM_TYPES.BIG_SHIELD) {
+        soundManager.play('big_shield_use', 0.7); 
+    }
+    
     
     // Create the held consumable model
     createHeldConsumableModel(itemType);
@@ -3807,6 +4085,9 @@ function checkItemPickups() {
 // Replace the animateKnifeAttack function with this enhanced version
 function animateKnifeAttack() {
     if (!knifeModel) return;
+
+    // Play knife swing sound
+    soundManager.play('knife_swing', 0.7);
     
     // Force cancel any ongoing animation
     if (knifeAnimationInProgress) {
@@ -3900,13 +4181,14 @@ function createKnifeModel() {
     handle.castShadow = true;
     handle.receiveShadow = true;
     
-    // Make blade bigger and more reflective
+    // Make blade bigger and more reflective - fixed to properly show metallic finish
     const bladeGeometry = new THREE.BoxGeometry(0.04, 0.35, 0.1);
     const bladeMaterial = new THREE.MeshStandardMaterial({ 
-        color: 0xe0e0e0,
-        roughness: 0.1,
-        metalness: 0.9,
-        emissive: 0x333333
+        color: 0xf0f0f0,     // Brighter silver color
+        roughness: 0.05,      // Reduced roughness for more reflectiveness
+        metalness: 0.8,       // Slightly reduced metalness to prevent total blackness
+        emissive: 0x222222,   // Add slight emissive to ensure visibility
+        emissiveIntensity: 0.2, // Not too strong
     });
     const blade = new THREE.Mesh(bladeGeometry, bladeMaterial);
     blade.position.y = 0.25; // Position blade above handle
@@ -3927,7 +4209,6 @@ function createKnifeModel() {
     knifeLight.position.set(0, 0, -0.2);
     knifeModel.add(knifeLight);
     
-    // This is critical - add to camera, not pitchObject
     camera.add(knifeModel);
     console.log("Knife model created and added to camera");
     
@@ -4133,20 +4414,23 @@ function updatePlayer() {
     
     // Handle player state (crouching)
     let currentSpeed = NORMAL_SPEED;
-    if (keys.shift && !isJumping) {
-        if (!isCrouching) {
+    
+    // Apply reduced speed when crouching OR using items
+    if ((keys.shift && !isJumping) || usingItem) {
+        // Only change player geometry when shift is pressed (not when using items)
+        if (!isCrouching && keys.shift && !isJumping) {
             player.geometry = new THREE.BoxGeometry(1, CROUCH_HEIGHT, 1);
             player.position.y = CROUCH_HEIGHT/2;
-            camera.position.y = 0.5;
+            player.userData.cameraHolder.position.y = CROUCH_HEIGHT * 0.8; // Lower camera holder
             isCrouching = true;
         }
         currentSpeed = CROUCH_SPEED;
     } else if (isCrouching && !keys.shift) {
         player.geometry = new THREE.BoxGeometry(1, NORMAL_HEIGHT, 1);
         player.position.y = NORMAL_HEIGHT/2;
-        camera.position.y = 0.8;
+        player.userData.cameraHolder.position.y = NORMAL_HEIGHT * 0.8; // Restore camera holder
         isCrouching = false;
-    }
+    }   
     
     // Handle jumping
     if (keys.space && !isJumping && !inAir) {
@@ -4170,7 +4454,7 @@ function updatePlayer() {
         }
     }
     
-    // CRITICAL FIX: Calculate movement direction based on yawObject rotation (not camera quaternion)
+    // Calculate movement direction based on yawObject rotation
     const angle = yawObject.rotation.y;
     
     // Calculate forward and right vectors using the yawObject angle
@@ -4453,24 +4737,29 @@ function startGame() {
     // Initialize the day-night cycle
     initDayNightSystem();
     
-    // Rest of your existing startGame function...
+    // Create environment elements
     createApocalypticRoad();
     addRoadBlockades();
     addAbandonedGasStation();
     addEnvironmentalObjects();
+    
+    // Initialize sound system
+    soundManager.init();
+    addButtonSounds();
 
-    // Enable shadows on player
+    // Enable shadows on player - UPDATED player creation with proper camera setup
     const playerGeometry = new THREE.BoxGeometry(1, NORMAL_HEIGHT, 1);
     const playerMaterial = new THREE.MeshStandardMaterial({ color: playerColor });
     player = new THREE.Mesh(playerGeometry, playerMaterial);
     player.position.y = NORMAL_HEIGHT/2;
-    player.castShadow = true; // Player casts shadows
+    player.castShadow = true; // Enable player shadow casting
+    player.receiveShadow = true; // Enable player shadow receiving
     scene.add(player);
 
     // Clear mountains array
     mountains = [];
     
-    // Create mountains for game scene with precise edge alignment (same as menu scene)
+    // Create mountains for game scene with precise edge alignment
     const spacing = 12;
     const boundary = 131.25;
     const rows = 3;
@@ -4501,12 +4790,8 @@ function startGame() {
                 
                 if (roadDirection === 'z' && Math.abs(distanceFromCenterX - roadHalfWidth) < 6) {
                     // This mountain is near the road edge, align it precisely
-                    xOffset = distanceFromCenterX < roadHalfWidth ? 
-                              roadHalfWidth - distanceFromCenterX : // Push to the edge if inside
-                              (Math.random() - 0.5) * Math.min(3, Math.abs(distanceFromCenterX - roadHalfWidth)); // Small random if outside
                 } else {
                     // Normal random offset for mountains away from road
-                    xOffset = (Math.random() - 0.5) * Math.min(6, Math.max(0, distanceFromCenterX - roadHalfWidth));
                 }
                 
                 mountainPositions.push({
@@ -4536,12 +4821,8 @@ function startGame() {
                 
                 if (roadDirection === 'x' && Math.abs(distanceFromCenterZ - roadHalfWidth) < 6) {
                     // This mountain is near the road edge, align it precisely
-                    zOffset = distanceFromCenterZ < roadHalfWidth ? 
-                             roadHalfWidth - distanceFromCenterZ : // Push to the edge if inside
-                             (Math.random() - 0.5) * Math.min(3, Math.abs(distanceFromCenterZ - roadHalfWidth)); // Small random if outside
                 } else {
                     // Normal random offset for mountains away from road
-                    zOffset = (Math.random() - 0.5) * Math.min(6, Math.max(0, distanceFromCenterZ - roadHalfWidth));
                 }
                 
                 mountainPositions.push({
@@ -4590,19 +4871,35 @@ function startGame() {
             const mountain = new THREE.Mesh(mountainGeometry, mountainMaterial);
             mountain.position.set(pos.x, scaledHeight/2, pos.z);
             mountain.rotation.y = Math.random() * Math.PI / 2;
+
+            mountain.castShadow = true; // Enable shadows for mountains
+            mountain.receiveShadow = true; // Enable shadows for mountains
             
             scene.add(mountain);
             mountains.push(mountain);
         }
     });
 
-
+    // UPDATED camera setup to prevent clipping through player
     pitchObject = new THREE.Object3D();
     yawObject = new THREE.Object3D();
     yawObject.add(pitchObject);
+    
+    // Create a camera holder object at eye level rather than center of player
+    const cameraHolder = new THREE.Object3D();
+    cameraHolder.position.y = NORMAL_HEIGHT * 0.8; // Position at 80% of player height (eye level)
+    player.add(cameraHolder);
+    
+    // Add yaw object to camera holder instead of directly to player
+    cameraHolder.add(yawObject);
     pitchObject.add(camera);
-    player.add(yawObject);
-    camera.position.y = 0.8;
+    
+    // Set camera position - it's now relative to the holder
+    camera.position.y = 0; // No additional height needed since holder is at eye level
+    camera.position.z = 0;
+    
+    // Store camera holder reference for crouch handling
+    player.userData.cameraHolder = cameraHolder;
 
     // Add ambient light for better visibility
     const ambientLight = new THREE.AmbientLight(0x606060);
@@ -4699,6 +4996,15 @@ function createRoadBlockade(xPos, rotation, targetScene) {
     blockadeGroup.position.set(xPos, 0, 0);
     blockadeGroup.rotation.y = rotation;
     targetScene.add(blockadeGroup);
+
+    function applyShadowsToGroup(group) {
+        group.traverse(function(node) {
+            if (node.isMesh) {
+                node.castShadow = true;
+                node.receiveShadow = true;
+            }
+        });
+    }
     
     // Create a crashed bus/truck as the main blockade
     createAbandonedVehicle(0, 0, 0, 0, blockadeGroup); // Position relative to group
@@ -4711,6 +5017,8 @@ function createRoadBlockade(xPos, rotation, targetScene) {
     
     // Add warning signs
     createRoadSigns(0, 0, 0, 0, blockadeGroup); // Position relative to group
+
+    applyShadowsToGroup(blockadeGroup); // Apply shadows to all elements in the group
     
     return blockadeGroup; // Return the group for tracking
 }
@@ -4728,6 +5036,7 @@ function clearRoadBlockades() {
     roadBlockades = [];
 }
 
+// Function to create an abandoned vehicle (truck or bus)
 // Function to create an abandoned vehicle (truck or bus)
 function createAbandonedVehicle(x, y, z, rotation, targetScene) {
     // Create vehicle group
@@ -4764,6 +5073,8 @@ function createAbandonedVehicle(x, y, z, rotation, targetScene) {
         });
         const cabin = new THREE.Mesh(cabinGeometry, cabinMaterial);
         cabin.position.set(length/2 - 1.5, height/2 + 0.5, 0);
+        cabin.castShadow = true;
+        cabin.receiveShadow = true;
         vehicleGroup.add(cabin);
         
         // Windshield
@@ -4776,6 +5087,8 @@ function createAbandonedVehicle(x, y, z, rotation, targetScene) {
         const windshield = new THREE.Mesh(windshieldGeometry, windshieldMaterial);
         windshield.position.set(length/2 - 0.5, height/2 + 1, width/2 + 0.01);
         windshield.rotation.y = Math.PI/2;
+        windshield.castShadow = true;
+        windshield.receiveShadow = true;
         vehicleGroup.add(windshield);
     }
     
@@ -4797,6 +5110,8 @@ function createAbandonedVehicle(x, y, z, rotation, targetScene) {
             );
             leftWindow.position.set(-length/2 + 2 + i*1.6, height/2 + 0.2, width/2 + 0.01);
             leftWindow.rotation.y = Math.PI/2;
+            leftWindow.castShadow = true;
+            leftWindow.receiveShadow = true;
             vehicleGroup.add(leftWindow);
             
             // Right side windows
@@ -4806,6 +5121,8 @@ function createAbandonedVehicle(x, y, z, rotation, targetScene) {
             );
             rightWindow.position.set(-length/2 + 2 + i*1.6, height/2 + 0.2, -width/2 - 0.01);
             rightWindow.rotation.y = -Math.PI/2;
+            rightWindow.castShadow = true;
+            rightWindow.receiveShadow = true;
             vehicleGroup.add(rightWindow);
         }
     }
@@ -4826,12 +5143,16 @@ function createAbandonedVehicle(x, y, z, rotation, targetScene) {
         const leftWheel = new THREE.Mesh(wheelGeometry, wheelMaterial);
         leftWheel.rotation.x = Math.PI/2;
         leftWheel.position.set(-length/2 + wheelSpacing * (i+1), 0.8, width/2);
+        leftWheel.castShadow = true;
+        leftWheel.receiveShadow = true;
         vehicleGroup.add(leftWheel);
         
         // Right wheels
         const rightWheel = new THREE.Mesh(wheelGeometry, wheelMaterial);
         rightWheel.rotation.x = Math.PI/2;
         rightWheel.position.set(-length/2 + wheelSpacing * (i+1), 0.8, -width/2);
+        rightWheel.castShadow = true;
+        rightWheel.receiveShadow = true;
         vehicleGroup.add(rightWheel);
     }
     
@@ -4849,6 +5170,14 @@ function createAbandonedVehicle(x, y, z, rotation, targetScene) {
     
     // Block road by placing across it
     vehicleGroup.rotation.y += Math.PI/4 * (Math.random() > 0.5 ? 1 : -1);
+    
+    // Set shadow properties for ALL meshes in the vehicle group including those added by addVehicleDamage
+    vehicleGroup.traverse(function(node) {
+        if (node.isMesh) {
+            node.castShadow = true;
+            node.receiveShadow = true;
+        }
+    });
     
     targetScene.add(vehicleGroup);
     return vehicleGroup;
@@ -5301,6 +5630,8 @@ function animatePistolReload() {
     pistolReloading = true;
     pistolAnimationInProgress = true;
     showNotification("Reloading...", 1000);
+
+    soundManager.play('pistol_reload', 0.8);
     
     // Animation constants
     const totalDuration = 1000; // 1 second reload time
@@ -5346,6 +5677,9 @@ function firePistol() {
         animatePistolReload();
         return;
     }
+
+    // Play pistol firing sound
+    soundManager.play('pistol_fire', 0.7);
     
     // Decrement ammo
     pistolAmmo--;
@@ -5502,42 +5836,170 @@ function updateBullets() {
         
         if (hitDetected) continue;
         
-        // For rockets only: check collision with environment (like abandoned cars)
+        // For rockets only: check comprehensive environment collisions
         if (bullet.userData.isRocket) {
-            // Check collisions with abandoned cars
-            for (const car of abandonedCars) {
-                if (!car || !car.userData) continue;
+            if (checkRocketEnvironmentCollisions(bullet, i)) {
+                continue; // Skip rest of loop if collision was found and handled
+            }
+        }
+    }
+}
+
+// New comprehensive environment collision check function for rockets
+function checkRocketEnvironmentCollisions(rocket, rocketIndex) {
+    // ---------- 1. ABANDONED CARS ----------
+    for (const car of abandonedCars) {
+        if (!car || !car.userData) continue;
+        
+        // Get car dimensions from userData
+        const carRadius = car.userData.collisionRadius;
+        
+        if (!carRadius) continue;
+        
+        // Calculate distance between rocket and car
+        const distance = rocket.position.distanceTo(car.position);
+        
+        // Check if collision occurs
+        if (distance < carRadius) {
+            console.log("Rocket hit car at distance:", distance);
+            handleRocketCollision(rocket, rocketIndex);
+            return true;
+        }
+    }
+    
+    // ---------- 2. GAS STATION ELEMENTS ----------
+    const gasStations = scene.children.filter(obj => obj.userData && obj.userData.isGasStation);
+    for (const station of gasStations) {
+        if (!station.userData.collisionElements) continue;
+        
+        for (const element of station.userData.collisionElements) {
+            // Get world position of collision element
+            const worldPos = new THREE.Vector3();
+            if (element.mesh) {
+                element.mesh.getWorldPosition(worldPos);
+            } else if (element.position) {
+                worldPos.copy(element.position);
+                worldPos.applyMatrix4(station.matrixWorld);
+            } else {
+                continue; // Skip if no position info
+            }
+            
+            let collision = false;
+            
+            if (element.type === 'box') {
+                // Box collision
+                const dx = Math.abs(worldPos.x - rocket.position.x);
+                const dz = Math.abs(worldPos.z - rocket.position.z);
                 
-                // Create vectors for position calculations
-                const carPos = car.position.clone();
+                // Apply rotation if needed
+                const stationAngle = station.rotation.y;
+                const rotatedWidth = Math.abs(element.width * Math.cos(stationAngle)) + 
+                                    Math.abs(element.depth * Math.sin(stationAngle));
+                const rotatedDepth = Math.abs(element.width * Math.sin(stationAngle)) + 
+                                    Math.abs(element.depth * Math.cos(stationAngle));
                 
-                // Get car dimensions from userData
-                const carRadius = car.userData.collisionRadius;
+                collision = (
+                    dx < rotatedWidth/2 + 0.5 &&
+                    dz < rotatedDepth/2 + 0.5
+                );
+            } 
+            else if (element.type === 'cylinder') {
+                // Cylinder collision (simplified as circle in XZ plane)
+                const dx = worldPos.x - rocket.position.x;
+                const dz = worldPos.z - rocket.position.z;
+                const distance = Math.sqrt(dx*dx + dz*dz);
                 
-                if (!carRadius) continue;
+                collision = distance < element.radius + 0.5;
+            }
+            
+            if (collision) {
+                console.log("Rocket hit gas station element");
+                handleRocketCollision(rocket, rocketIndex);
+                return true;
+            }
+        }
+    }
+    
+    // ---------- 3. ROAD LAMPS ----------
+    for (const lamp of roadLampObjects) {
+        if (!lamp || !lamp.userData || !lamp.userData.isLampPost) continue;
+        
+        const lampRadius = lamp.userData.collisionRadius || 0.5;
+        const distance = rocket.position.distanceTo(lamp.position);
+        
+        if (distance < lampRadius) {
+            console.log("Rocket hit lamp post at distance:", distance);
+            handleRocketCollision(rocket, rocketIndex);
+            return true;
+        }
+    }
+    
+    // ---------- 4. ENVIRONMENTAL OBJECTS (ROCKS AND DEAD TREES) ----------
+    if (scene.userData.environmentalColliders) {
+        for (const collider of scene.userData.environmentalColliders) {
+            if (collider.type === 'circle' || collider.type === 'cylinder') {
+                const dx = collider.position.x - rocket.position.x;
+                const dz = collider.position.z - rocket.position.z;
+                const distance = Math.sqrt(dx * dx + dz * dz);
                 
-                // Calculate distance between rocket and car
-                const distance = bullet.position.distanceTo(carPos);
-                
-                // Check if collision occurs
-                if (distance < carRadius) {
-                    console.log("Rocket hit car at distance:", distance);
-                    
-                    // Create explosion at impact point
-                    createRocketExplosion(bullet.position, bullet.userData.blastRadius, bullet.userData.damage);
-                    
-                    // Clean up thrust effects
-                    if (bullet.userData.thrustEmitter) {
-                        clearInterval(bullet.userData.thrustEmitter);
-                    }
-                    
-                    scene.remove(bullet);
-                    bullets.splice(i, 1);
-                    break;
+                if (distance < collider.radius) {
+                    console.log("Rocket hit environmental object (tree/rock)");
+                    handleRocketCollision(rocket, rocketIndex);
+                    return true;
                 }
             }
         }
     }
+    
+    // ---------- 5. MOUNTAINS ----------
+    for (const mountain of mountains) {
+        const dx = mountain.position.x - rocket.position.x;
+        const dz = mountain.position.z - rocket.position.z;
+        const distance = Math.sqrt(dx * dx + dz * dz);
+        
+        // Mountain base is approximately cone width
+        if (distance < (mountain.geometry.parameters.radius + 0.5)) {
+            // Check height to ensure we're hitting the mountain
+            if (rocket.position.y < mountain.position.y + mountain.geometry.parameters.height) {
+                console.log("Rocket hit mountain");
+                handleRocketCollision(rocket, rocketIndex);
+                return true;
+            }
+        }
+    }
+    
+    // ---------- 6. ROAD BLOCKADES ----------
+    for (const blockade of roadBlockades) {
+        if (!blockade || !blockade.position) continue;
+        
+        // Use a reasonable collision radius for blockades
+        const blockadeRadius = 6; // Generous detection radius
+        const distance = rocket.position.distanceTo(blockade.position);
+        
+        if (distance < blockadeRadius) {
+            console.log("Rocket hit road blockade");
+            handleRocketCollision(rocket, rocketIndex);
+            return true;
+        }
+    }
+    
+    // No collision detected
+    return false;
+}
+
+// Helper function to handle rocket collision with environment
+function handleRocketCollision(rocket, rocketIndex) {
+    // Create explosion at the impact point
+    createRocketExplosion(rocket.position, rocket.userData.blastRadius, rocket.userData.damage);
+    
+    // Clean up thrust effects
+    if (rocket.userData.thrustEmitter) {
+        clearInterval(rocket.userData.thrustEmitter);
+    }
+    
+    // Remove the rocket
+    scene.remove(rocket);
+    bullets.splice(rocketIndex, 1);
 }
 
 // Initialize menu scene first
@@ -5941,6 +6403,13 @@ function addMenuGasStation() {
     
     // 5. Add some lighting effects (broken flickering light)
     addBrokenLighting(gasStationGroup);
+
+    gasStationGroup.traverse(function(node) {
+        if (node.isMesh) {
+            node.castShadow = true;
+            node.receiveShadow = true;
+        }
+    });
     
     // Add to menu scene
     menuScene.add(gasStationGroup);
@@ -6073,21 +6542,44 @@ function createRoadLamp(x, y, z, state, targetScene, side) {
         // Enhanced light settings for better visibility
         const lightColor = 0xffffaa; // Warmer yellow light
         
-        // Create a more intense light
-        const lightIntensity = state === 'working' ? 3.0 : 2.0; // Brighter for working lamps
-        const lightDistance = 25; // Increased light range
-        const light = new THREE.PointLight(lightColor, lightIntensity, lightDistance);
+        // Create a spotlight instead of point light
+        const lightIntensity = state === 'working' ? 5.0 : 3.0; // Brighter for working lamps
+        const lightDistance = 30; // Increased light range
         
-        // Position light below glass
+        // Create spotlight with wider cone effect
+        const light = new THREE.SpotLight(
+            lightColor,
+            lightIntensity,
+            lightDistance, 
+            Math.PI / 4, // Wider 45-degree cone (changed from Math.PI/5)
+            0.8, // Higher penumbra for softer edge (changed from 0.6)
+            1.0 // Lower decay for more distance (changed from 1.5)
+        );
+        
+        // Position light at the lamp head
         light.position.set(0, 3.8, 1.3);
+        
+        // Create and position target for spotlight - MOVED FARTHER
+        const targetObject = new THREE.Object3D();
+        targetObject.position.set(0, 0, 12); // Target point farther on the ground
+        lampGroup.add(targetObject); // Add to lamp group so it moves with the lamp
+        light.target = targetObject; // Set as the spotlight target
+        
+        // Improve shadow quality
+        light.castShadow = true;
+        light.shadow.mapSize.width = 1024; // Increased from 512
+        light.shadow.mapSize.height = 1024; // Increased from 512
+        light.shadow.camera.near = 0.5;
+        light.shadow.camera.far = lightDistance;
+        light.shadow.bias = -0.0005; // Add shadow bias to reduce artifacts
         
         // Add a subtle glow effect for working lamps
         if (state === 'working') {
-            const glowGeometry = new THREE.SphereGeometry(0.3, 16, 16);
+            const glowGeometry = new THREE.SphereGeometry(0.4, 16, 16); // Increased size
             const glowMaterial = new THREE.MeshBasicMaterial({
                 color: 0xffffcc,
                 transparent: true,
-                opacity: 0.3,
+                opacity: 0.4, // Increased from 0.3
                 side: THREE.BackSide
             });
             const glow = new THREE.Mesh(glowGeometry, glowMaterial);
@@ -6098,6 +6590,11 @@ function createRoadLamp(x, y, z, state, targetScene, side) {
         // Store reference to the light for flickering
         lampGroup.userData.light = light;
         lampGroup.userData.state = state;
+        lampGroup.userData.lightTarget = targetObject;
+        lampGroup.userData.initialIntensity = lightIntensity; // Store initial intensity
+        
+        // Start with lights off - they'll be turned on later based on time
+        light.intensity = 0;
         
         // Add the light
         lampGroup.add(light);
@@ -6182,6 +6679,24 @@ function addDamageDetails(lampGroup, state) {
         const tiltAngle = (Math.random() - 0.5) * 0.1 * severity;
         lampGroup.rotation.z = tiltAngle;
     }
+
+    lampGroup.traverse(function(node) {
+        if (node.isMesh) {
+            node.castShadow = true;
+            node.receiveShadow = true;
+        }
+    });
+
+    if (state !== 'broken' && lampGroup.userData.light) {
+        lampGroup.userData.light.castShadow = true;
+        
+        // Improve shadow quality for lamp lights
+        lampGroup.userData.light.shadow.mapSize.width = 512;
+        lampGroup.userData.light.shadow.mapSize.height = 512;
+        lampGroup.userData.light.shadow.camera.near = 0.5;
+        lampGroup.userData.light.shadow.camera.far = 30;
+        lampGroup.userData.light.shadow.bias = -0.0005;
+    }
     
     // For really broken ones, bend the arm
     if (state === 'broken' && Math.random() > 0.5) {
@@ -6243,6 +6758,7 @@ function addBrokenLampDetails(lampGroup, side) {
 }
 
 // Function to animate damaged/flickering lamps
+// Function to animate damaged/flickering lamps
 function animateDamagedLamp(lampGroup) {
     const light = lampGroup.userData.light;
     if (!light) return;
@@ -6250,69 +6766,14 @@ function animateDamagedLamp(lampGroup) {
     // Set up improved flicker parameters
     lampGroup.userData.flickerParams = {
         nextFlickerTime: performance.now(),
-        intensity: 2.0, // Start with higher intensity
-        baseIntensity: 2.0, // Higher base intensity
-        maxIntensity: 3.5, // Maximum intensity during flickers
-        minIntensity: 0.2, // Minimum intensity during flickers
+        intensity: 0, // Start with lights off (will be updated based on round)
+        baseIntensity: lampGroup.userData.initialIntensity, // Use stored initial intensity
+        maxIntensity: lampGroup.userData.initialIntensity * 1.2, // 20% brighter during flickers
+        minIntensity: 0.1, // Almost off during flickers
         isFlickering: false,
         sparkDue: false,
         lastSparkTime: performance.now()
     };
-    
-    // Function to create spark effect
-    function createSpark() {
-        const sparkGeometry = new THREE.SphereGeometry(0.03, 8, 8);
-        const sparkMaterial = new THREE.MeshBasicMaterial({
-            color: 0xffffcc,
-            transparent: true,
-            opacity: 0.9 // More visible sparks
-        });
-        
-        const spark = new THREE.Mesh(sparkGeometry, sparkMaterial);
-        spark.position.set(0, 3.8, 1.3); // Same position as light source
-        
-        // Random velocity for the spark
-        const velocity = new THREE.Vector3(
-            (Math.random() - 0.5) * 0.05,
-            -Math.random() * 0.02 - 0.01,
-            (Math.random() - 0.5) * 0.05
-        );
-        
-        spark.userData = {
-            velocity: velocity,
-            lifetime: 500 + Math.random() * 300,
-            created: performance.now()
-        };
-        
-        lampGroup.add(spark);
-        
-        // Animate the spark
-        function animateSpark() {
-            const now = performance.now();
-            const life = now - spark.userData.created;
-            
-            if (life > spark.userData.lifetime || !lampGroup.parent) {
-                if (lampGroup.parent) lampGroup.remove(spark);
-                return;
-            }
-            
-            // Move the spark
-            spark.position.x += spark.userData.velocity.x;
-            spark.position.y += spark.userData.velocity.y;
-            spark.position.z += spark.userData.velocity.z;
-            
-            // Apply gravity to velocity
-            spark.userData.velocity.y -= 0.001;
-            
-            // Fade out
-            const progress = life / spark.userData.lifetime;
-            spark.material.opacity = 0.9 * (1 - progress);
-            
-            requestAnimationFrame(animateSpark);
-        }
-        
-        requestAnimationFrame(animateSpark);
-    }
     
     // Function to update the flicker
     function updateFlicker() {
@@ -6321,19 +6782,34 @@ function animateDamagedLamp(lampGroup) {
         const now = performance.now();
         const params = lampGroup.userData.flickerParams;
         
+        // Only flicker if after round 10 (check global currentRound)
+        const shouldBeActive = currentRound > 10;
+        
+        if (!shouldBeActive) {
+            light.intensity = 0;
+            // Check again later
+            requestAnimationFrame(updateFlicker);
+            return;
+        }
+        
+        // Rest of the function remains unchanged
         // Check if it's time to flicker
         if (now >= params.nextFlickerTime) {
             if (params.isFlickering) {
                 // End flicker period, return to base intensity
                 light.intensity = params.baseIntensity;
                 params.isFlickering = false;
+                
+                // Reset spotlight angle
+                light.angle = Math.PI / 4; // Reset to normal angle
+                
                 params.nextFlickerTime = now + Math.random() * 5000 + 2000; // 2-7 seconds until next flicker
             } else {
                 // Start flicker period
                 params.isFlickering = true;
                 params.nextFlickerTime = now + Math.random() * 2000 + 500; // Flicker for 0.5-2.5 seconds
                 
-                // 50% chance to create sparks during this flicker period (increased from 30%)
+                // 50% chance to create sparks during this flicker period
                 params.sparkDue = Math.random() < 0.5;
                 params.lastSparkTime = now;
             }
@@ -6345,14 +6821,19 @@ function animateDamagedLamp(lampGroup) {
             if (Math.random() < 0.5) {
                 // Random intensity between min and max
                 light.intensity = params.minIntensity + Math.random() * (params.maxIntensity - params.minIntensity);
+                
+                // Also occasionally change the light cone angle to simulate electrical problems
+                if (Math.random() < 0.2) {
+                    light.angle = Math.PI / 4 * (0.7 + Math.random() * 0.6); // Vary between 70-130% of normal angle
+                }
             } else {
                 light.intensity = params.baseIntensity;
             }
             
             // Create more frequent sparks during flicker events
-            if (params.sparkDue && now - params.lastSparkTime > 200) { // Reduced from 300ms
-                if (Math.random() < 0.3) { // Increased from 0.2
-                    createSpark();
+            if (params.sparkDue && now - params.lastSparkTime > 200) {
+                if (Math.random() < 0.3) {
+                    createSpark(lampGroup);
                     params.lastSparkTime = now;
                 }
             }
@@ -6604,8 +7085,9 @@ function updateSkyColor(sunHeight, moonHeight) {
 
 // Function to update street lamps based on time
 function updateLamps(sunHeight, moonHeight) {
-    // Turn lamps on when it's dark enough
-    const isDark = sunHeight < 0.1;
+    // Only turn lamps on after round 10 (starting from round 11)
+    // This is when it becomes night in the game
+    const shouldLampsBeOn = currentRound > 10;
     
     for (const lamp of roadLampObjects) {
         if (!lamp.userData || !lamp.userData.state) continue;
@@ -6615,20 +7097,23 @@ function updateLamps(sunHeight, moonHeight) {
         
         if (!light) continue;
         
-        // Handle lamp based on state and time
+        // Handle lamp based on state and round
         if (lampState === 'working') {
-            // Working lamps turn on when dark
-            light.intensity = isDark ? 2.0 : 0;
+            // Working lamps turn on only after round 10
+            light.intensity = shouldLampsBeOn ? lamp.userData.initialIntensity : 0;
             
-            // Add optional subtle glow effect to working lamps
-            updateLampGlow(lamp, isDark, sunHeight);
+            // Update lamp glow visibility
+            updateLampGlow(lamp, shouldLampsBeOn, sunHeight);
         } 
         else if (lampState === 'damaged') {
-            // Damaged lamps have flickering light only when dark
-            if (isDark) {
-                // Keep existing flicker animation
+            if (shouldLampsBeOn) {
+                // Keep existing flicker animation active for damaged lamps
+                // The flicker animation will handle intensity changes
+                if (lamp.userData.flickerParams) {
+                    lamp.userData.flickerParams.baseIntensity = lamp.userData.initialIntensity;
+                }
             } else {
-                // Force off during the day
+                // Force off during daytime/early rounds
                 light.intensity = 0;
             }
         } 
@@ -7150,8 +7635,14 @@ function populateShopItems() {
 function addItemToShop(item, container) {
     const itemElement = document.createElement('div');
     itemElement.className = 'shop-item';
+    
+    // Get the image path based on the item type
+    const imagePath = getItemIconPath(item.id);
+    
     itemElement.innerHTML = `
-        <div class="item-icon">${item.icon}</div>
+        <div class="item-icon">
+            <img src="${imagePath}" alt="${item.name}" class="shop-item-image">
+        </div>
         <div class="item-details">
             <div class="item-name">${item.name}</div>
             <div class="item-description">${item.description}</div>
@@ -7172,6 +7663,44 @@ function addItemToShop(item, container) {
         const itemId = parseInt(e.target.dataset.itemId);
         purchaseItem(itemId);
     });
+}
+
+function getItemIconPath(itemId) {
+    // Determine the correct path based on item ID
+    if (itemId >= WEAPON_TYPES.PISTOL && itemId <= WEAPON_TYPES.ROCKET_LAUNCHER) {
+        // Weapon items
+        switch(itemId) {
+            case WEAPON_TYPES.PISTOL:
+                return "assets/icons/weapons/pistol.png";
+            case WEAPON_TYPES.SHOTGUN:
+                return "assets/icons/weapons/shotgun.png";
+            case WEAPON_TYPES.ASSAULT_RIFLE:
+                return "assets/icons/weapons/assault-rifle.png";
+            case WEAPON_TYPES.SNIPER_RIFLE:
+                return "assets/icons/weapons/sniper-rifle.png";
+            case WEAPON_TYPES.CROSSBOW:
+                return "assets/icons/weapons/crossbow.png";
+            case WEAPON_TYPES.MINIGUN:
+                return "assets/icons/weapons/minigun.png";
+            case WEAPON_TYPES.ROCKET_LAUNCHER:
+                return "assets/icons/weapons/rocket-launcher.png";
+        }
+    } else {
+        // Consumable items
+        switch(itemId) {
+            case ITEM_TYPES.BANDAGE:
+                return "assets/icons/items/bandage.png";
+            case ITEM_TYPES.MEDKIT:
+                return "assets/icons/items/medkit.png";
+            case ITEM_TYPES.MINI_SHIELD:
+                return "assets/icons/items/mini-shield.png";
+            case ITEM_TYPES.BIG_SHIELD:
+                return "assets/icons/items/big-shield.png";
+        }
+    }
+    
+    // Default icon if no match found
+    return "assets/icons/items/unknown.png";
 }
 
 // Function to handle item purchase
@@ -7281,9 +7810,9 @@ function createBandageModel() {
     // Main bandage roll (white cylinder)
     const rollGeometry = new THREE.CylinderGeometry(0.15, 0.15, 0.15, 16);
     const rollMaterial = new THREE.MeshStandardMaterial({ 
-        color: 0xffffff,
-        roughness: 0.3,
-        metalness: 0.1
+        color: 0xffcc99,
+        roughness: 0.9,
+        metalness: 0.0
     });
     const roll = new THREE.Mesh(rollGeometry, rollMaterial);
     roll.rotation.z = Math.PI/2; // Lay on its side
@@ -8012,6 +8541,9 @@ function createMountainsForMenu() {
             const mountain = new THREE.Mesh(mountainGeometry, mountainMaterial);
             mountain.position.set(pos.x, scaledHeight/2, pos.z);
             mountain.rotation.y = Math.random() * Math.PI / 2;
+
+            mountain.castShadow = true;
+            mountain.receiveShadow = true;
             
             menuScene.add(mountain);
         }
@@ -8238,8 +8770,10 @@ document.addEventListener('mousemove', (event) => {
     yawObject.rotation.y -= movementX * sensitivity;
     pitchObject.rotation.x -= movementY * sensitivity;
     
-    // Limit the pitch rotation to prevent over-rotation
-    pitchObject.rotation.x = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, pitchObject.rotation.x));
+    // More restrictive pitch limits to prevent camera clipping
+    const maxPitchUp = Math.PI/3; // 60 degrees up (reduced from 90)
+    const maxPitchDown = Math.PI/3; // 60 degrees down (reduced from 90)
+    pitchObject.rotation.x = Math.max(-maxPitchDown, Math.min(maxPitchUp, pitchObject.rotation.x));
 });
 
 document.addEventListener('mousedown', (event) => {
@@ -8394,6 +8928,9 @@ function updateMinigunHeat() {
     
     // If overheated, force stop firing
     if (minigunHeatLevel >= 1) {
+        // Play overheat sound
+        soundManager.play('minigun_overheat', 0.8);
+        
         showNotification("Minigun overheated!");
         stopMinigunSpin();
         
@@ -8634,6 +9171,21 @@ function cleanupPlayerAndCamera(callback) {
         }
         scene.remove(player);
         player = null; 
+
+        if (minigunFireSound) {
+            minigunFireSound.pause();
+            minigunFireSound = null;
+        }
+
+        if (minigunSpinupSound) {
+            minigunSpinupSound.pause();
+            minigunSpinupSound = null;
+        }
+
+        if (minigunSpindownSound) {
+            minigunSpindownSound.pause();
+            minigunSpindownSound = null;
+        }
     }
     
     // Clean up UI elements
@@ -8728,7 +9280,7 @@ animate();
 // Add to controls menu
 console.log('Type toggleFPS() in the console to show/hide FPS counter');
 
-// Function to start the game rounds
+// Update the startRounds function to hide the enemy counter initially
 function startRounds() {
     // Reset game state
     currentRound = 0;
@@ -8745,11 +9297,21 @@ function startRounds() {
     gameStats.kills.ranged = 0;
     gameStats.kills.boss = 0;
     
-    // Show round information UI
+    // Show round information UI but hide enemy counter until round starts
     document.getElementById('roundInfo').style.display = 'block';
+    
+    // Hide the enemy counter initially
+    const enemiesRemainingElement = document.getElementById('enemiesRemaining');
+    if (enemiesRemainingElement) {
+        enemiesRemainingElement.style.display = 'none';
+    }
     
     // Start initial countdown
     startCountdown(10, () => {
+        // Show enemy counter when first round starts
+        if (enemiesRemainingElement) {
+            enemiesRemainingElement.style.display = 'block';
+        }
         startNextRound();
     });
 }
@@ -8846,12 +9408,16 @@ function startNextRound() {
     // Special handling for boss rounds
     if (currentRound === 5) {
         showNotification("WARNING: Boss approaching...", 5000);
+        soundManager.play('boss_incoming', 0.8); // Play boss incoming sound
     } else if (currentRound === 10) {
         showNotification("WARNING: The Warden approaches...", 5000);
+        soundManager.play('boss_incoming', 0.8); // Play boss incoming sound
     } else if (currentRound === 15) {
         showNotification("WARNING: The Phantom materializes...", 5000);
+        soundManager.play('boss_incoming', 0.8); // Play boss incoming sound
     } else if (currentRound === 20) {
-        showNotification("WARNING: The Overlord rises...", 5000);
+        showNotification("WARNING: The Mega Boss has arrived...", 5000);
+        soundManager.play('boss_incoming', 0.8); // Play boss incoming sound
     }
 }
 
@@ -9268,6 +9834,9 @@ function fireShotgun() {
         return;
     }
     
+    // Play shotgun firing sound
+    soundManager.play('shotgun_fire', 0.7);
+
     // Decrement ammo
     shotgunAmmo--;
     updateAmmoDisplay();
@@ -9410,6 +9979,9 @@ function animateShotgunReload() {
     shotgunReloading = true;
     shotgunAnimationInProgress = true;
     showNotification("Reloading shotgun...", 1200);
+
+    // Play shotgun reload sound
+    soundManager.play('shotgun_reload', 0.8);
     
     // Animation constants - longer reload time than pistol
     const totalDuration = 1200; // 1.2 seconds reload time
@@ -12431,6 +13003,13 @@ function createAbandonedGasStation() {
     // 5. Add some lighting effects (broken flickering light)
     addBrokenLighting(gasStationGroup);
     
+    gasStationGroup.traverse(function(node) {
+        if (node.isMesh) {
+            node.castShadow = true;
+            node.receiveShadow = true;
+        }
+    });
+
     // Add to scene
     scene.add(gasStationGroup);
     
@@ -13907,31 +14486,45 @@ function toggleInfiniteHealth() {
     return infiniteHealthCheat;
 }
 
-// Update the takeDamage function to prevent damage while paused
+// Update the takeDamage function to use a single hurt sound
 function takeDamage(amount) {
-    // Skip damage if game is paused or infinite health is enabled
-    if (isPaused || infiniteHealthCheat) {
-        return;
-    }
+    // Skip if invulnerable cheat is active
+    if (infiniteHealthCheat) return;
+
+    // Add screen shake effect based on damage amount
+    const shakeIntensity = Math.min(0.8, amount * 0.02);
+    addScreenShake(shakeIntensity, 300);
+
+    // Calculate shield damage and remaining damage
+    let remainingDamage = amount;
+    let shieldDamage = 0;
     
-    // Regular damage handling continues unchanged
     if (shield > 0) {
-        if (shield >= amount) {
-            shield -= amount;
-        } else {
-            const remainingDamage = amount - shield;
-            shield = 0;
-            health -= remainingDamage;
-        }
-    } else {
-        health -= amount;
+        // Play shield hit sound
+        soundManager.play('player_shield_hit', 0.7);
+        
+        // Calculate how much damage shield can absorb
+        shieldDamage = Math.min(shield, remainingDamage);
+        shield -= shieldDamage;
+        remainingDamage -= shieldDamage;
+    }
+
+    // Apply remaining damage to health if any
+    if (remainingDamage > 0) {
+        // Play player hurt sound
+        soundManager.play('player_hurt', 0.7);
+
+        // Apply damage but ensure health doesn't go below 0
+        health = Math.max(0, health - remainingDamage);
+        
+        // Track damage taken in game stats
+        gameStats.damageTaken += remainingDamage;
     }
     
-    shield = Math.max(0, shield);
-    health = Math.max(0, health);
+    // Update HUD
     updateHUD();
-    gameStats.damageTaken += amount;
     
+    // Check for game over
     if (health <= 0) {
         handlePlayerDeath();
     }
@@ -13952,6 +14545,8 @@ function damageEnemy(enemy, damage) {
     
     // Track damage dealt
     gameStats.damageDealt += damage;
+
+    soundManager.play('enemy_hit', 0.4);
     
     // Check if enemy is defeated
     if (enemy.userData.health <= 0) {
@@ -14002,6 +14597,18 @@ function createShield(position, radius, color = 0xff3300, duration = 3000) {
 
 // Function to handle enemy defeat
 function defeatEnemy(enemy) {
+
+    if (enemy.userData.type === ENEMY_TYPES.BOSS || 
+        enemy.userData.type === ENEMY_TYPES.WARDEN_BOSS || 
+        enemy.userData.type === ENEMY_TYPES.PHANTOM_BOSS || 
+        enemy.userData.type === ENEMY_TYPES.MEGA_BOSS) {
+        // Play boss death sound with higher volume
+        soundManager.play('boss_death', 0.8);
+    } else {
+        // Play regular enemy death sound
+        soundManager.play('enemy_death', 0.5);
+    }
+
     // Add coins for defeating the enemy
     const baseCoins = 1;
     let coinReward = baseCoins;
@@ -14059,6 +14666,20 @@ function defeatEnemy(enemy) {
     if (!infiniteMoneyCheat) {
         playerCoins += coinReward;
         updateCoinDisplay();
+    }
+    
+    // Update the enemy counter display
+    const enemiesRemainingElement = document.getElementById('enemiesRemaining');
+    if (enemiesRemainingElement) {
+        // Get current count from display text
+        const currentText = enemiesRemainingElement.textContent;
+        const currentCount = parseInt(currentText.replace('Enemies: ', ''));
+        
+        // Calculate new count
+        const newCount = Math.max(0, currentCount - 1);
+        
+        // Update the display
+        enemiesRemainingElement.textContent = `Enemies: ${newCount}`;
     }
     
     // Remove enemy from active arrays
@@ -14264,23 +14885,7 @@ function handlePlayerDeath() {
         
         // Add event listener to the return button
         document.getElementById('gameOverReturnButton').addEventListener('click', () => {
-            // Remove game over screen
-            document.getElementById('gameOverScreen').remove();
-            
-            // Reset game state
-            resetGame();
-            document.getElementById('roundInfo').style.display = 'none';
-            
-            // Clean up UI elements
-            cleanupGameUI();
-            
-            // Show main menu
-            document.getElementById('menu').style.display = 'block';
-            document.getElementById('backgroundScene').style.display = 'block';
-            document.getElementById('gameScene').style.display = 'none';
-            
-            // Reset game started state
-            gameStarted = false;
+            window.location.reload(); // This acts exactly like pressing F5
         });
     }, 2500);
 }
@@ -16278,6 +16883,36 @@ function simulateLoading() {
 window.addEventListener('DOMContentLoaded', () => {
     // Iniciar a simulação de carregamento
     simulateLoading();
+});
+
+// Update all menu buttons to use page reload
+document.addEventListener('DOMContentLoaded', () => {
+    // Pause menu - already using reload but making sure it's consistent
+    const pauseMenuBackButton = document.getElementById('returnToMainButton');
+    if (pauseMenuBackButton) {
+        pauseMenuBackButton.addEventListener('click', () => {
+            window.location.reload();
+        });
+    }
+    
+    // Defeat screen button
+    const defeatBackButton = document.getElementById('defeatReturnButton');
+    if (defeatBackButton) {
+        defeatBackButton.addEventListener('click', () => {
+            window.location.reload();
+        });
+    }
+    
+    // Victory screen button
+    const victoryBackButton = document.getElementById('victoryReturnButton');
+    if (victoryBackButton) {
+        victoryBackButton.addEventListener('click', () => {
+            window.location.reload();
+        });
+    }
+
+    soundManager.init();
+    addButtonSounds();
 });
 
 // Function to jump to a specific round
