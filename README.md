@@ -155,6 +155,21 @@ Tiago Brito
 
 ## Patch Notes
 
+### v1.1.1 (June 2, 2025) - Bug Fixes & Pricing Balances
+- **Economy Rebalancing**:
+  - Adjusted shop prices to better match game progression
+  - Reduced prices of late-game weapons for better accessibility
+  - Balanced consumable costs relative to their effectiveness
+
+- **Bug Fixes**:
+  - Fixed ranged enemy projectile detection and damage application
+  - Round completion rewards now granted immediately after round ends instead of at next round start
+  - Reverted player camera to its previous postion
+  - Fixed road lamps always being on
+  - Fixed round display showing incorrect values at game start
+  - Fixed consumables timer being on top of the health bar
+  - Fixed sniper scope not working
+
 ### v1.1.0 (June 1, 2025) - Shadow & Immersion Enhancement Update
 - **Shadow System Overhaul**:
   - Added shadow casting to mountains, creating more realistic terrain

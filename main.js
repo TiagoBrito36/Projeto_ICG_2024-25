@@ -138,77 +138,77 @@ const SHOP_ITEMS = [
         id: ITEM_TYPES.BANDAGE,
         name: "Bandages",
         description: "Restores 15 health",
-        price: 5,
+        price: 8,
         icon: '🩹'
     },
     {
         id: ITEM_TYPES.MEDKIT,
         name: "Medkit",
         description: "Restores 100 health",
-        price: 15,
+        price: 25,
         icon: '🧰'
     },
     {
         id: ITEM_TYPES.MINI_SHIELD,
         name: "Mini Shield",
         description: "Adds 25 shield points",
-        price: 8,
+        price: 10,
         icon: '🛡️'
     },
     {
         id: ITEM_TYPES.BIG_SHIELD,
         name: "Shield Potion",
         description: "Adds 50 shield points",
-        price: 20,
+        price: 30,
         icon: '🔷'
     },
     {
         id: WEAPON_TYPES.PISTOL,
         name: "Pistol",
         description: "Standard sidearm with decent damage and rate of fire.",
-        price: 15,
+        price: 20,
         icon: "🔫"
     },
     {
         id: WEAPON_TYPES.SHOTGUN,
         name: "Shotgun",
         description: "Powerful at close range with spread damage.",
-        price: 50,
+        price: 40,
         icon: "🔫"
     },
     {
         id: WEAPON_TYPES.ASSAULT_RIFLE,
         name: "Assault Rifle",
         description: "Balanced weapon with rapid fire and moderate damage.",
-        price: 30,
+        price: 35,
         icon: "🔫"
     },
     {
         id: WEAPON_TYPES.SNIPER_RIFLE,
         name: "Sniper Rifle",
         description: "Long-range precision with high damage. Right-click to scope.",
-        price: 35,
+        price: 45,
         icon: "🔫"
     },
     {
         id: WEAPON_TYPES.CROSSBOW,
         name: "Crossbow",
         description: "Silent and deadly, with retrievable bolts.",
-        price: 35,
+        price: 40,
         icon: "🏹"
     },
     {
         id: WEAPON_TYPES.MINIGUN,
         name: "Minigun",
         description: "Extremely high rate of fire, but watch for overheating.",
-        price: 150,
+        price: 120,
         icon: "🔫"
     },
     {
         id: WEAPON_TYPES.ROCKET_LAUNCHER,
         name: "Rocket Launcher",
         description: "Explosive area damage. Be careful not to hit yourself!",
-        price: 175,
+        price: 150,
         icon: "🚀"
     }
 ];
@@ -2710,17 +2710,38 @@ function createMuzzleFlash(parentObject) {
 }
 
 function toggleScope() {
+    console.log("toggleScope called, previous state:", isScoped);
+    
+    // Toggle the scope state
     isScoped = !isScoped;
+    console.log("New scope state:", isScoped);
+    
+    // Get the main HUD container that holds health and shield bars
+    const hudContainer = document.getElementById('hud');
+    
+    // Individual HUD elements that need toggling
+    const hudElements = [
+        document.getElementById('ammoContainer'),
+        document.getElementById('roundInfo'),
+        document.getElementById('enemiesRemaining'),
+        document.getElementById('countdown'),
+        document.getElementById('healthContainer'),
+        document.getElementById('shieldContainer'),
+        document.getElementById('itemBar'),
+        document.getElementById('coinContainer')
+    ];
     
     if (isScoped) {
         // Save normal FOV if we haven't already
         if (!normalFOV) {
             normalFOV = camera.fov;
+            console.log("Saved normal FOV:", normalFOV);
         }
         
         // Change FOV to zoom in
-        camera.fov = 20; // Narrower FOV for zoom
+        camera.fov = 20;
         camera.updateProjectionMatrix();
+        console.log("Camera FOV changed to:", camera.fov);
         
         // Create or show scope overlay
         createScopeOverlay();
@@ -2732,9 +2753,29 @@ function toggleScope() {
         
         // Hide crosshair and replace with scope reticle
         hideCrosshair();
+        
+        // IMPORTANT: Hide the entire HUD container first
+        if (hudContainer) {
+            hudContainer.style.display = 'none';
+            console.log("Hiding entire HUD container");
+        }
+        
+        // Also hide individual elements as backup
+        hudElements.forEach(element => {
+            if (element) {
+                element.style.display = 'none';
+                console.log("Hiding HUD element:", element.id);
+            }
+        });
     } else {
         // Restore normal FOV
-        camera.fov = normalFOV;
+        if (normalFOV) {
+            camera.fov = normalFOV;
+            console.log("Restored normal FOV:", normalFOV);
+        } else {
+            camera.fov = 75; // Default FOV as fallback
+            console.log("Using default FOV: 75");
+        }
         camera.updateProjectionMatrix();
         
         // Remove scope overlay
@@ -2747,12 +2788,30 @@ function toggleScope() {
         
         // Show crosshair again
         showCrosshair();
+        
+        // IMPORTANT: Restore the main HUD container first
+        if (hudContainer) {
+            hudContainer.style.display = 'flex';
+            console.log("Restoring HUD container");
+        }
+        
+        // Restore HUD elements with their original display properties
+        if (hudElements[0]) hudElements[0].style.display = 'block'; // ammo
+        if (hudElements[1]) hudElements[1].style.display = 'block'; // round info
+        if (hudElements[2] && isRoundActive) hudElements[2].style.display = 'block'; // enemies
+        if (hudElements[3] && roundCountdown > 0) hudElements[3].style.display = 'block'; // countdown
+        if (hudElements[4]) hudElements[4].style.display = 'flex'; // health
+        if (hudElements[5]) hudElements[5].style.display = 'flex'; // shield
+        if (hudElements[6]) hudElements[6].style.display = 'flex'; // item bar
+        if (hudElements[7]) hudElements[7].style.display = 'flex'; // coin container
+        
+        console.log("HUD elements restored");
     }
 }
 
 // Create a scope overlay effect
 function createScopeOverlay() {
-    // Remove any existing scope overlay
+    // Remove any existing scope overlay first
     removeScopeOverlay();
     
     // Create the scope container
@@ -2826,12 +2885,14 @@ function createScopeOverlay() {
     scopeBorder.appendChild(reticle);
     
     document.body.appendChild(scopeContainer);
+    console.log("Scope overlay created");
 }
 
 function removeScopeOverlay() {
     const existingOverlay = document.getElementById('scopeOverlay');
     if (existingOverlay) {
         existingOverlay.remove();
+        console.log("Scope overlay removed");
     }
 }
 
@@ -3797,7 +3858,7 @@ function createCircularTimer(duration) {
     svg.setAttribute('height', '60');
     svg.style.position = 'absolute';
     svg.style.left = '50%';
-    svg.style.bottom = '25%'; // Position above health bar
+    svg.style.bottom = '30%'; // Position above health bar
     svg.style.transform = 'translateX(-50%)';
     svg.style.zIndex = '1000';
     
@@ -4887,8 +4948,9 @@ function startGame() {
     
     // Create a camera holder object at eye level rather than center of player
     const cameraHolder = new THREE.Object3D();
-    cameraHolder.position.y = NORMAL_HEIGHT * 0.8; // Position at 80% of player height (eye level)
     player.add(cameraHolder);
+
+    cameraHolder.position.y = NORMAL_HEIGHT * 0.3; // Position at eye level
     
     // Add yaw object to camera holder instead of directly to player
     cameraHolder.add(yawObject);
@@ -4898,8 +4960,13 @@ function startGame() {
     camera.position.y = 0; // No additional height needed since holder is at eye level
     camera.position.z = 0;
     
-    // Store camera holder reference for crouch handling
+    // Store camera holder and original material for visibility toggling
     player.userData.cameraHolder = cameraHolder;
+    player.userData.originalMaterial = player.material.clone();
+    // Create transparent material for when player looks up
+    player.userData.transparentMaterial = player.material.clone();
+    player.userData.transparentMaterial.transparent = true;
+    player.userData.transparentMaterial.opacity = 0;
 
     // Add ambient light for better visibility
     const ambientLight = new THREE.AmbientLight(0x606060);
@@ -5036,7 +5103,6 @@ function clearRoadBlockades() {
     roadBlockades = [];
 }
 
-// Function to create an abandoned vehicle (truck or bus)
 // Function to create an abandoned vehicle (truck or bus)
 function createAbandonedVehicle(x, y, z, rotation, targetScene) {
     // Create vehicle group
@@ -6107,6 +6173,15 @@ document.addEventListener('keydown', (event) => {
         toggleShop();
     } 
     
+    // IMPORTANT: Add an explicit key binding for scope toggle
+    // "E" key to toggle scope when using sniper rifle
+    if (event.code === 'KeyE' && gameStarted && !isPaused && !isInventoryOpen && !isShopOpen) {
+        if (inventory[selectedSlot] === WEAPON_TYPES.SNIPER_RIFLE && !sniperRifleReloading) {
+            console.log("E key pressed, toggling scope");
+            toggleScope();
+        }
+    }
+
     // Item slot selection with number keys
      if (gameStarted && !isPaused) {
         if (event.key >= '1' && event.key <= '5') {
@@ -6176,6 +6251,9 @@ document.addEventListener('keydown', (event) => {
 
 // Modify the click event handler to ensure knife can be used while moving
 document.addEventListener('click', (event) => {
+
+    if (event.button !== 0) return;
+
     if (gameStarted && !isPaused) {
         if (!isLocked) {
             // Request pointer lock if not already locked
@@ -6539,65 +6617,51 @@ function createRoadLamp(x, y, z, state, targetScene, side) {
     
     // Add light source if working or damaged
     if (state !== 'broken') {
-        // Enhanced light settings for better visibility
-        const lightColor = 0xffffaa; // Warmer yellow light
-        
-        // Create a spotlight instead of point light
-        const lightIntensity = state === 'working' ? 5.0 : 3.0; // Brighter for working lamps
-        const lightDistance = 30; // Increased light range
-        
-        // Create spotlight with wider cone effect
-        const light = new THREE.SpotLight(
-            lightColor,
-            lightIntensity,
-            lightDistance, 
-            Math.PI / 4, // Wider 45-degree cone (changed from Math.PI/5)
-            0.8, // Higher penumbra for softer edge (changed from 0.6)
-            1.0 // Lower decay for more distance (changed from 1.5)
-        );
-        
-        // Position light at the lamp head
-        light.position.set(0, 3.8, 1.3);
-        
-        // Create and position target for spotlight - MOVED FARTHER
-        const targetObject = new THREE.Object3D();
-        targetObject.position.set(0, 0, 12); // Target point farther on the ground
-        lampGroup.add(targetObject); // Add to lamp group so it moves with the lamp
-        light.target = targetObject; // Set as the spotlight target
-        
-        // Improve shadow quality
-        light.castShadow = true;
-        light.shadow.mapSize.width = 1024; // Increased from 512
-        light.shadow.mapSize.height = 1024; // Increased from 512
-        light.shadow.camera.near = 0.5;
-        light.shadow.camera.far = lightDistance;
-        light.shadow.bias = -0.0005; // Add shadow bias to reduce artifacts
-        
-        // Add a subtle glow effect for working lamps
-        if (state === 'working') {
-            const glowGeometry = new THREE.SphereGeometry(0.4, 16, 16); // Increased size
-            const glowMaterial = new THREE.MeshBasicMaterial({
-                color: 0xffffcc,
-                transparent: true,
-                opacity: 0.4, // Increased from 0.3
-                side: THREE.BackSide
-            });
-            const glow = new THREE.Mesh(glowGeometry, glowMaterial);
-            glow.position.copy(light.position);
-            lampGroup.add(glow);
-        }
-        
-        // Store reference to the light for flickering
-        lampGroup.userData.light = light;
-        lampGroup.userData.state = state;
-        lampGroup.userData.lightTarget = targetObject;
-        lampGroup.userData.initialIntensity = lightIntensity; // Store initial intensity
-        
-        // Start with lights off - they'll be turned on later based on time
-        light.intensity = 0;
-        
-        // Add the light
-        lampGroup.add(light);
+    // Enhanced light settings for better visibility
+    const lightColor = 0xffffaa; // Warmer yellow light
+
+    // Create a spotlight with a cone effect
+    const lightIntensity = state === 'working' ? 5.0 : 3.0; // Brighter for working lamps
+    const lightDistance = 30; // Light range
+
+    // Create spotlight with a cone
+    const spotLight = new THREE.SpotLight(
+        lightColor,
+        lightIntensity,
+        lightDistance, 
+        Math.PI / 4, // 45-degree cone
+        0.8, // Penumbra for softer edge
+        1.0 // Decay
+    );
+
+    // Position light at the lamp head
+    spotLight.position.set(0, 3.8, 1.3);
+
+    // Create and position target for spotlight (on the ground, in front of lamp)
+    const targetObject = new THREE.Object3D();
+    targetObject.position.set(0, 0, 12); // 12 units in front of lamp, at ground level
+    lampGroup.add(targetObject);
+    spotLight.target = targetObject;
+
+    // Enable shadows for the spotlight
+    spotLight.castShadow = true;
+    spotLight.shadow.mapSize.width = 1024;
+    spotLight.shadow.mapSize.height = 1024;
+    spotLight.shadow.camera.near = 0.5;
+    spotLight.shadow.camera.far = lightDistance;
+    spotLight.shadow.bias = -0.0005;
+
+    // Store reference for flickering, etc.
+    lampGroup.userData.light = spotLight;
+    lampGroup.userData.state = state;
+    lampGroup.userData.lightTarget = targetObject;
+    lampGroup.userData.initialIntensity = lightIntensity;
+
+    // Start with lights off (will be turned on later based on time)
+    spotLight.intensity = 0;
+
+    // Add the spotlight to the lamp group
+    lampGroup.add(spotLight);
         
         // Add flickering animation for damaged lamps
         if (state === 'damaged') {
@@ -7087,7 +7151,7 @@ function updateSkyColor(sunHeight, moonHeight) {
 function updateLamps(sunHeight, moonHeight) {
     // Only turn lamps on after round 10 (starting from round 11)
     // This is when it becomes night in the game
-    const shouldLampsBeOn = currentRound > 10;
+    const shouldLampsBeOn = currentRound >= 10;
     
     for (const lamp of roadLampObjects) {
         if (!lamp.userData || !lamp.userData.state) continue;
@@ -8642,20 +8706,10 @@ function addPotholes(roadLength, roadWidth) {
     }
 }
 
-document.addEventListener('contextmenu', (event) => {
-    // Prevent default right-click menu
+document.addEventListener('contextmenu', function(event) {
     event.preventDefault();
-    event.stopPropagation();
-    
-    // Only toggle scope if we have the sniper rifle selected and not reloading
-    if (gameStarted && !isPaused && !isInventoryOpen && !isShopOpen &&
-        inventory[selectedSlot] === WEAPON_TYPES.SNIPER_RIFLE && !sniperRifleReloading) {
-        toggleScope();
-        console.log("Scope toggled:", isScoped); // Debug log
-    }
-    
-    return false; // Ensure we block the context menu
-});
+    return false;
+}, { passive: false, capture: true });
 
 // Function to add faded road markings
 function addRoadMarkings(roadLength) {
@@ -8759,7 +8813,6 @@ document.addEventListener('pointerlockchange', () => {
     isLocked = document.pointerLockElement === document.body;
 });
 
-// Add mouse movement functionality
 document.addEventListener('mousemove', (event) => {
     if (!gameStarted || !isLocked) return;
     
@@ -8771,9 +8824,33 @@ document.addEventListener('mousemove', (event) => {
     pitchObject.rotation.x -= movementY * sensitivity;
     
     // More restrictive pitch limits to prevent camera clipping
-    const maxPitchUp = Math.PI/3; // 60 degrees up (reduced from 90)
-    const maxPitchDown = Math.PI/3; // 60 degrees down (reduced from 90)
+    const maxPitchUp = Math.PI/2; // 90 degrees up
+    const maxPitchDown = Math.PI/2; // 90 degrees down
     pitchObject.rotation.x = Math.max(-maxPitchDown, Math.min(maxPitchUp, pitchObject.rotation.x));
+    
+    // Hide player model when looking up past a threshold angle
+    if (pitchObject.rotation.x > 0.3) { // About 17 degrees up
+        if (player.material !== player.userData.transparentMaterial) {
+            player.material = player.userData.transparentMaterial;
+        }
+    } else {
+        // IMPORTANT: Always show the body when looking straight ahead or down
+        if (player.material !== player.userData.originalMaterial) {
+            player.material = player.userData.originalMaterial;
+        }
+        
+        // Make sure player model is visible when looking down
+        if (pitchObject.rotation.x < -0.2) { // Looking down threshold
+            // Adjust camera position slightly forward when looking down
+            // to improve visibility of the player's body
+            camera.position.z = -0.7;
+            camera.position.y = -0.2; // Adjust height to match player
+        } else {
+            // Reset camera position when not looking down
+            camera.position.z = 0;
+            camera.position.y = 0; 
+        }
+    }
 });
 
 document.addEventListener('mousedown', (event) => {
@@ -8786,6 +8863,30 @@ document.addEventListener('mousedown', (event) => {
         }
     }
 });
+
+document.addEventListener('mousedown', function(event) {
+    // Check for right mouse button (button 2)
+    if (event.button === 2) {
+        // Prevent default right-click behavior
+        event.preventDefault();
+        
+        console.log("Right mouse down detected, current scope state:", isScoped);
+        
+        // Only toggle scope if appropriate conditions are met
+        if (gameStarted && !isPaused && !isInventoryOpen && !isShopOpen) {
+            if (inventory[selectedSlot] === WEAPON_TYPES.SNIPER_RIFLE) {
+                if (!sniperRifleReloading) {
+                    console.log("Calling toggleScope() from mousedown");
+                    toggleScope();
+                } else {
+                    console.log("Can't scope while reloading");
+                }
+            }
+        }
+    }
+    
+    // Keep the existing mousedown handler for left mouse button
+}, { passive: false, capture: true });
 
 document.addEventListener('mouseup', (event) => {
     if (event.button === 0) { // Left mouse button
@@ -9299,6 +9400,9 @@ function startRounds() {
     
     // Show round information UI but hide enemy counter until round starts
     document.getElementById('roundInfo').style.display = 'block';
+
+    // Update the round display with the correct total rounds value
+    document.getElementById('roundDisplay').textContent = `Round ${currentRound}/${totalRounds}`;
     
     // Hide the enemy counter initially
     const enemiesRemainingElement = document.getElementById('enemiesRemaining');
@@ -9393,14 +9497,6 @@ function startNextRound() {
     
     // Reset last enemy spawn time
     lastEnemySpawnTime = performance.now();
-    
-    // Award coins for completing previous round (except first round)
-    if (currentRound > 1) {
-        const coinsAwarded = Math.floor(10 + (currentRound - 1) * 5);
-        playerCoins += coinsAwarded;
-        updateCoinDisplay();
-        showNotification(`+${coinsAwarded} coins awarded!`, 2000);
-    }
     
     // Spawn enemies based on round configuration
     spawnEnemiesForRound(config);
@@ -10374,11 +10470,11 @@ function spawnEnemy(enemyType) {
             attackRange: config.attackRange,
             lastAttackTime: 0,
             attackCooldown: config.attackCooldown,
-            stuckCounter: 0, // NEW: Add counter for detecting stuck enemies
-            lastPosition: enemy.position.clone() // NEW: Track position for stuck detection
+            stuckCounter: 0,
+            lastPosition: enemy.position.clone(),
+            // Add this line to ensure ranged enemies have projectile speed
+            projectileSpeed: enemyType === ENEMY_TYPES.RANGED ? 0.3 : 0.2
         };
-        
-        // Add type-specific properties as before...
         
         // Add enemy to the scene and tracking arrays
         scene.add(enemy);
@@ -10576,17 +10672,20 @@ function handleBasicEnemy(enemy, directionToPlayer, distanceToPlayer, now) {
 }
 
 function handleRangedEnemy(enemy, directionToPlayer, distanceToPlayer, now) {
-    // Keep distance from player
-    const optimalRange = enemy.userData.attackRange * 0.7;
-    
-    if (distanceToPlayer < optimalRange - 2) {
-        // Too close, move away
+    // The ranged enemy should shoot whenever the player is within attackRange.
+    // Optionally, you can keep the "keep distance" behavior, but always allow shooting if in range.
+
+    // If too close, move away
+    if (distanceToPlayer < enemy.userData.attackRange * 0.5) {
         moveEnemy(enemy, directionToPlayer.clone().negate());
-    } else if (distanceToPlayer > optimalRange + 2) {
-        // Too far, move closer
+    }
+    // If too far, move closer
+    else if (distanceToPlayer > enemy.userData.attackRange) {
         moveEnemy(enemy, directionToPlayer);
-    } else {
-        // In range, attack if cooldown expired
+    }
+
+    // Always attack if within attack range and cooldown expired
+    if (distanceToPlayer <= enemy.userData.attackRange) {
         if (now - enemy.userData.lastAttackTime >= enemy.userData.attackCooldown) {
             fireProjectile(enemy, directionToPlayer);
             enemy.userData.lastAttackTime = now;
@@ -14252,8 +14351,15 @@ const projectiles = [];
 
 // Function to fire a projectile
 function fireProjectile(enemy, direction) {
-    const projectileGeometry = new THREE.SphereGeometry(0.3, 8, 8);
-    const projectileMaterial = new THREE.MeshBasicMaterial({ color: 0xff6600 });
+    const projectileGeometry = new THREE.SphereGeometry(0.4, 8, 8);
+    const projectileColor = enemy.material.color.getHex(); // Get enemy's color
+    
+    const projectileMaterial = new THREE.MeshBasicMaterial({ 
+        color: projectileColor,
+        transparent: true,
+        opacity: 0.8 
+    });
+    
     const projectile = new THREE.Mesh(projectileGeometry, projectileMaterial);
     
     // Position the projectile at the enemy
@@ -14771,24 +14877,27 @@ function createEnemyDefeatAnimation(enemy) {
 
 // Function to end a round
 function endRound() {
+    if (!isRoundActive) return;
+    
+    // Mark round as inactive
     isRoundActive = false;
     
-    // Calculate time until next round with 60 second cap
-    const baseWait = betweenRoundTime + (currentRound - 1) * 5;
-    const betweenRoundWait = Math.min(60, baseWait); // Cap at 60 seconds maximum
+    // Award coins for completing the round (moved from startNextRound)
+    const coinsAwarded = Math.floor(10 + currentRound * 5); // Increased coin reward
+    playerCoins += coinsAwarded;
+    updateCoinDisplay();
+    showNotification(`Round ${currentRound} complete! +${coinsAwarded} coins awarded!`, 3000);
     
-    // Show next round message
-    if (currentRound < totalRounds) {
-        showNotification(`Round ${currentRound} Complete!\nNext round starting in ${betweenRoundWait} seconds...`);
-        
-        // Start countdown to next round
-        startCountdown(betweenRoundWait, () => {
-            startNextRound();
-        });
-    } else {
-        // Last round completed
-        showVictoryScreen();
+    // Clear any stuck detection interval
+    if (stuckDetectionInterval) {
+        clearInterval(stuckDetectionInterval);
+        stuckDetectionInterval = null;
     }
+    
+    // Start countdown to next round
+    startCountdown(betweenRoundTime, () => {
+        startNextRound();
+    });
 }
 
 // Add this function near your other UI functions
